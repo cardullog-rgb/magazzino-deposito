@@ -87,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
     setBaseUser(u);
     setElevationExpiresAt(null);
+    window.location.hash = "/";
   };
 
   const quickLoginIpad = async () => {
@@ -99,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
     setBaseUser(u);
     setElevationExpiresAt(null);
+    window.location.hash = "/";
   };
 
   const logout = () => {
@@ -108,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setBaseUser(null);
     setElevationExpiresAt(null);
+    window.location.hash = "/";
   };
 
   const elevateAdmin = async (username: string, password: string) => {

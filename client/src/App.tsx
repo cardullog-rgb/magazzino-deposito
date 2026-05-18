@@ -165,16 +165,20 @@ function AuthenticatedApp() {
             </header>
             <main className="flex-1 overflow-hidden">
               <Switch>
-                <Route path="/" component={isAdmin ? FoglioPage : BancoPage} />
-                {isAdmin && <Route path="/banco" component={BancoPage} />}
-                {isAdmin && <Route path="/foglio" component={FoglioPage} />}
-                {isAdmin && <Route path="/dashboard" component={DashboardPage} />}
-                {isAdmin && <Route path="/scorte" component={ScortePage} />}
-                <Route path="/lista-spesa" component={ListaSpesaPage} />
-                {isAdmin && <Route path="/storico" component={StoricoPage} />}
-                {isAdmin && <Route path="/carico" component={CaricoPage} />}
-                {isAdmin && <Route path="/utenti" component={UtentiPage} />}
-                <Route component={NotFound} />
+                <Route path="/">{isAdmin ? <FoglioPage /> : <BancoPage />}</Route>
+                <Route path="/banco"><BancoPage /></Route>
+                <Route path="/foglio">{isAdmin ? <FoglioPage /> : <BancoPage />}</Route>
+                <Route path="/lista-spesa"><ListaSpesaPage /></Route>
+                {isAdmin && (
+                  <>
+                    <Route path="/dashboard"><DashboardPage /></Route>
+                    <Route path="/scorte"><ScortePage /></Route>
+                    <Route path="/storico"><StoricoPage /></Route>
+                    <Route path="/carico"><CaricoPage /></Route>
+                    <Route path="/utenti"><UtentiPage /></Route>
+                  </>
+                )}
+                <Route><NotFound /></Route>
               </Switch>
             </main>
           </div>
