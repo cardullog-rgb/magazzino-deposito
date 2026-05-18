@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Pencil, ArrowUpCircle, ArrowDownCircle, RefreshCw, Package, X, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Search, Plus, Pencil, ArrowUpCircle, ArrowDownCircle, RefreshCw, Package, X, ChevronDown, ChevronUp, Sparkles, CornerDownLeft, SlidersHorizontal } from "lucide-react";
 import { InlineEdit } from "@/components/inline-edit";
 import { suggestCategoryId } from "@/lib/suggest-category";
+import { parseProduct } from "@/lib/parse-product";
 import type { Product, Category } from "@shared/schema";
 
 type Level = "out" | "low" | "ok";
@@ -196,15 +197,23 @@ export default function ScortePage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="px-6 py-4 border-b shrink-0 flex items-center justify-between gap-4">
+      <div className="px-6 py-4 border-b shrink-0 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display font-bold text-xl">Scorte</h1>
           <p className="text-sm text-muted-foreground">{sorted.length} prodotti filtrati</p>
         </div>
         {isAdmin && (
-          <Button onClick={openNew} data-testid="button-new-product">
-            <Plus className="w-4 h-4 mr-1.5" /> Nuovo Prodotto
-          </Button>
+          <QuickAddProduct
+            categories={categories}
+            products={products}
+            onCreate={async (payload) => {
+              await apiRequest("POST", "/api/products", payload);
+              qc.invalidateQueries({ queryKey: ["/api/products"] });
+              qc.invalidateQueries({ queryKey: ["/api/sheet/current"] });
+              toast({ title: "Prodotto aggiunto", description: payload.name });
+            }}
+            onOpenAdvanced={openNew}
+          />
         )}
       </div>
 
@@ -556,6 +565,114 @@ export default function ScortePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   QUICK ADD PRODUCT — una riga di testo, preview live, Enter salva
+   ═══════════════════════════════════════════════════════════════════════ */
+function QuickAddProduct({
+  categories, products, onCreate, onOpenAdvanced,
+}: {
+  categories: Category[];
+  products: Product[];
+  onCreate: (payload: any) => Promise<void>;
+  onOpenAdvanced: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const parsed = useMemo(() => parseProduct(text), [text]);
+  const catId = useMemo(() => {
+    if (!parsed.name) return null;
+    return suggestCategoryId(parsed.name, parsed.brand, products, categories);
+  }, [parsed, products, categories]);
+  const category = categories.find(c => c.id === catId);
+
+  async function submit() {
+    if (!parsed.name || pending) return;
+    if (!catId) {
+      // niente categoria suggerita: apri il dialog avanzato pre-popolato
+      onOpenAdvanced();
+      return;
+    }
+    setPending(true);
+    try {
+      await onCreate({
+        name: parsed.name,
+        brand: parsed.brand,
+        categoryId: catId,
+        unit: parsed.unit,
+        unitSize: parsed.unitSize,
+        packSize: parsed.packSize,
+        currentStock: 0,
+        minStock: 2,
+        idealStock: 5,
+        location: "",
+        notes: "",
+        active: true,
+        supplier: "",
+      });
+      setText("");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-1 min-w-0 sm:max-w-2xl">
+      <div className="relative flex-1 min-w-0">
+        <Plus className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") submit(); }}
+          placeholder="Aggiungi prodotto…  es. fusto birra Messina 30lt"
+          data-testid="input-quick-add"
+          className="w-full h-10 pl-9 pr-3 text-sm rounded-md bg-muted border-0 outline-none focus:ring-2 focus:ring-primary/40"
+        />
+      </div>
+      {/* Preview chip */}
+      {text.trim() && (
+        <div className="hidden md:flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-muted/60 max-w-xs truncate"
+             title={`${parsed.unit}${parsed.unitSize ? ` · ${parsed.unitSize}` : ""}${parsed.packSize > 1 ? ` · pack ${parsed.packSize}` : ""}`}>
+          {category ? (
+            <span className="flex items-center gap-1">
+              <span>{category.icon}</span>
+              <span>{category.name}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground italic">categoria?</span>
+          )}
+          <span className="text-muted-foreground/50">·</span>
+          <span className="font-mono">{parsed.unit}</span>
+          {parsed.unitSize && <span className="font-mono text-muted-foreground">{parsed.unitSize}</span>}
+          {parsed.packSize > 1 && <span className="font-mono text-muted-foreground">×{parsed.packSize}</span>}
+        </div>
+      )}
+      <Button
+        onClick={submit}
+        disabled={pending || !parsed.name}
+        data-testid="button-quick-add-submit"
+        size="sm"
+        title={!catId && parsed.name ? "Apre il form completo per scegliere la categoria" : "Aggiungi"}
+      >
+        {pending ? "…" : (
+          <>
+            <CornerDownLeft className="w-3.5 h-3.5 mr-1" />
+            Aggiungi
+          </>
+        )}
+      </Button>
+      <button
+        onClick={onOpenAdvanced}
+        title="Form completo (campi avanzati)"
+        className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <SlidersHorizontal className="w-4 h-4" />
+      </button>
     </div>
   );
 }
