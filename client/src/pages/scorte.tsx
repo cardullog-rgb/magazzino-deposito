@@ -646,9 +646,9 @@ function QuickAddProduct({
         unit: parsed.unit,
         unitSize: parsed.unitSize,
         packSize: parsed.packSize,
-        currentStock: 0,
+        currentStock: parsed.initialStock,
         minStock: 2,
-        idealStock: 5,
+        idealStock: Math.max(5, parsed.initialStock * 2),
         location: "",
         notes: "",
         active: true,
@@ -693,6 +693,11 @@ function QuickAddProduct({
             <span className="text-muted-foreground italic">categoria?</span>
           )}
           <span className="text-muted-foreground/50">·</span>
+          {parsed.initialStock > 0 && (
+            <span className="font-mono font-medium" style={{ color: "hsl(var(--primary))" }}>
+              {parsed.initialStock}
+            </span>
+          )}
           <span className="font-mono">{parsed.unit}</span>
           {parsed.unitSize && <span className="font-mono text-muted-foreground">{parsed.unitSize}</span>}
           {parsed.packSize > 1 && <span className="font-mono text-muted-foreground">×{parsed.packSize}</span>}

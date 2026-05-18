@@ -13,6 +13,7 @@ export interface ParsedProduct {
   unit: string;          // "pz" | "cassa" | "fusto" | "bt" | "kg" | "lt" | "conf" | "sacco" | "mazzo" | "cartone"
   unitSize: string;      // es. "33cl", "30lt", "25kg"
   packSize: number;      // 1 di default, >1 se è una confezione multipla
+  initialStock: number;  // quantità iniziale dedotta dal testo (es. "30 forchette" → 30)
 }
 
 // Mappa parole → unità canonica
@@ -44,7 +45,7 @@ const PACK_RE = /^[x×](\d{1,3})$|^(\d{1,3})[x×]$/i;
 
 export function parseProduct(input: string): ParsedProduct {
   const raw = input.trim();
-  if (!raw) return { name: "", brand: "", unit: "pz", unitSize: "", packSize: 1 };
+  if (!raw) return { name: "", brand: "", unit: "pz", unitSize: "", packSize: 1, initialStock: 0 };
 
   // Tokenizza preservando capitalizzazione
   let tokens = raw.split(/\s+/);
@@ -52,18 +53,42 @@ export function parseProduct(input: string): ParsedProduct {
   let unit = "";
   let unitSize = "";
   let packSize = 1;
-  let unitTokenIndex = -1; // dove era l'unità (per capire se il numero dopo è pack)
+  let initialStock = 0;
+  let unitExplicit = false;
 
-  // ── 1) Estrai unità di misura (prima occorrenza) ──────────────────────────
+  // ── 0) Numero iniziale standalone = quantità iniziale ────────────────────
+  // Es. "30 forchette" → initialStock=30, name="Forchette".
+  // Solo se è davvero in posizione 0 ed è un intero ragionevole.
+  if (tokens.length > 1 && /^\d{1,4}$/.test(tokens[0])) {
+    const n = parseInt(tokens[0], 10);
+    if (n >= 1 && n <= 9999) {
+      initialStock = n;
+      tokens.shift();
+    }
+  }
+
+  // ── 1) Estrai unità di misura ──────────────────────────────────────────────
+  // Rimuove TUTTE le occorrenze (es. "casse … cassa 24" non lascia "cassa" nel nome).
+  // Caso speciale: lt/kg/cl/ml/g dopo un numero è FORMATO, non unità di
+  // confezionamento. Es. "Olio EVO 5 lt" → unitSize="5lt", unit non settata.
   for (let i = 0; i < tokens.length; i++) {
     const lc = tokens[i].toLowerCase().replace(/[.,;:!?]+$/, "");
-    if (UNIT_MAP[lc]) {
-      unit = UNIT_MAP[lc];
-      unitTokenIndex = i;
-      tokens.splice(i, 1);
-      i--;
-      break; // solo la prima
+    if (!UNIT_MAP[lc]) continue;
+
+    const isMeasure = /^(lt|l|kg|g|cl|ml)$/i.test(lc);
+    if (isMeasure && i > 0 && /^\d+(?:[.,]\d+)?$/.test(tokens[i - 1])) {
+      // "5 lt" → formato 5lt
+      if (!unitSize) unitSize = normalizeSize(tokens[i - 1], lc);
+      tokens.splice(i - 1, 2);
+      i -= 2;
+      continue;
     }
+    if (!unitExplicit) {
+      unit = UNIT_MAP[lc];
+      unitExplicit = true;
+    }
+    tokens.splice(i, 1);
+    i--;
   }
 
   // ── 2) Estrai formato (33cl, 30lt, 0.5lt, 25kg, 200g) ─────────────────────
@@ -106,13 +131,28 @@ export function parseProduct(input: string): ParsedProduct {
       }
     }
     // Numero intero standalone DOPO l'unità (es. "cassa 24")
-    if (/^\d{1,3}$/.test(tokens[i]) && unit && unit !== "pz" && packSize === 1) {
+    if (/^\d{1,4}$/.test(tokens[i]) && unitExplicit && packSize === 1) {
       const n = parseInt(tokens[i], 10);
       if (n >= 2 && n <= 999) {
         packSize = n;
         tokens.splice(i, 1);
         i--;
         continue;
+      }
+    }
+  }
+
+  // ── 3b) Fallback: numero intero standalone se nessuna unità esplicita →
+  //        è la quantità iniziale (es. "Pasta 24" → 24 pezzi di pasta).
+  if (!unitExplicit && initialStock === 0) {
+    for (let i = 0; i < tokens.length; i++) {
+      if (/^\d{1,4}$/.test(tokens[i])) {
+        const n = parseInt(tokens[i], 10);
+        if (n >= 1 && n <= 9999) {
+          initialStock = n;
+          tokens.splice(i, 1);
+          break;
+        }
       }
     }
   }
@@ -139,7 +179,7 @@ export function parseProduct(input: string): ParsedProduct {
   // ── 6) Ricostruisci nome ───────────────────────────────────────────────────
   const name = capitalize(tokens.join(" ").replace(/\s+/g, " ").trim());
 
-  return { name: name || raw, brand: "", unit, unitSize, packSize };
+  return { name: name || raw, brand: "", unit, unitSize, packSize, initialStock };
 }
 
 function normalizeSize(num: string, unit: string): string {
@@ -171,10 +211,14 @@ export interface CategoryTemplate {
 }
 
 const CATEGORY_TEMPLATES: Array<{ keywords: string[]; tpl: CategoryTemplate }> = [
+  // Termini molto specifici PRIMA dei più generici (per non far matchare "lievito di birra" a Birre)
+  { keywords: ["farina","semola","lievito","impasto","manitoba"],
+    tpl: { name: "Farine", icon: "🌾", color: "#d97706", macroCategory: "cucina", section: "cucina", sortOrder: 20 } },
+
   { keywords: ["acqua","ferrarelle","panna","sanpellegrino","levissima","uliveto","lete"],
     tpl: { name: "Acqua", icon: "💧", color: "#3b82f6", macroCategory: "acqua", section: "bevande", sortOrder: 1 } },
 
-  { keywords: ["birra","fusto","heineken","moretti","peroni","corona","ichnusa","ceres","tuborg","forst","menabrea","becks","carlsberg","budweiser","leffe","duvel","chimay","messina","affligem","blanche","erdinger","fischer"],
+  { keywords: ["birra","fusto","heineken","moretti","peroni","corona","ichnusa","ceres","tuborg","forst","menabrea","becks","carlsberg","budweiser","leffe","duvel","chimay","messina","affligem","blanche","erdinger","fischer","bombola","co2"],
     tpl: { name: "Birre", icon: "🍺", color: "#eab308", macroCategory: "birre", section: "bevande", sortOrder: 2 } },
 
   { keywords: ["cola","coca","fanta","sprite","schweppes","gazzosa","chinotto","aranciata","limonata","ginger","tonica","redbull","red bull","pepsi"],
@@ -210,9 +254,6 @@ const CATEGORY_TEMPLATES: Array<{ keywords: string[]; tpl: CategoryTemplate }> =
   { keywords: ["vino","passito","zibibbo","moscato","marsala"],
     tpl: { name: "Vini", icon: "🍷", color: "#991b1b", macroCategory: "vini", section: "bevande", sortOrder: 13 } },
 
-  { keywords: ["farina","semola","lievito","impasto"],
-    tpl: { name: "Farine", icon: "🌾", color: "#d97706", macroCategory: "cucina", section: "cucina", sortOrder: 20 } },
-
   { keywords: ["pomodoro","pelati","passata","ciliegino","datterino","pachino","conserva"],
     tpl: { name: "Pomodoro", icon: "🍅", color: "#ef4444", macroCategory: "cucina", section: "cucina", sortOrder: 21 } },
 
@@ -233,6 +274,12 @@ const CATEGORY_TEMPLATES: Array<{ keywords: string[]; tpl: CategoryTemplate }> =
 
   { keywords: ["pasta","caffè","caffe","zucchero","riso","biscotti","cracker"],
     tpl: { name: "Dispensa", icon: "🥫", color: "#78716c", macroCategory: "cucina", section: "cucina", sortOrder: 27 } },
+
+  { keywords: ["forchetta","forchette","coltello","coltelli","cucchiaio","cucchiai","posata","posate","tovagliolo","tovaglioli","tovaglia","tovaglie","bicchiere","bicchieri","piatto","piatti","calice","calici","cannuccia","cannucce","stuzzicadenti","sottobicchier"],
+    tpl: { name: "Sala & Materiali", icon: "🍴", color: "#a3a3a3", macroCategory: "sala", section: "cucina", sortOrder: 30 } },
+
+  { keywords: ["carta","scottex","scontrino","sacchetto","busta","detergente","detersivo","sgrassatore","spugna","panno","guanti","sapone"],
+    tpl: { name: "Pulizia & Carta", icon: "🧴", color: "#94a3b8", macroCategory: "sala", section: "cucina", sortOrder: 31 } },
 ];
 
 /**
@@ -243,7 +290,7 @@ export function inferCategoryTemplate(text: string): CategoryTemplate {
   const lc = text.toLowerCase();
   for (const { keywords, tpl } of CATEGORY_TEMPLATES) {
     for (const kw of keywords) {
-      if (lc.includes(kw)) return tpl;
+      if (wordIncludes(lc, kw)) return tpl;
     }
   }
   return {
@@ -254,4 +301,10 @@ export function inferCategoryTemplate(text: string): CategoryTemplate {
     section: "cucina",
     sortOrder: 99,
   };
+}
+
+// Word boundary match: evita che "ciliegino" matchi "gin".
+function wordIncludes(text: string, kw: string): boolean {
+  const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  return new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, "i").test(text);
 }

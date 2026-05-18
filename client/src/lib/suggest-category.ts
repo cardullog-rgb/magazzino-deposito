@@ -87,10 +87,12 @@ export function suggestCategoryId(
     vodk:    ["absolut","belvedere","grey goose","skyy","beluga","smirnoff"],
     tequil:  ["jose cuervo","patron","sierra","olmeca","don julio"],
     aperit:  ["aperol","campari","martini","cinzano","lillet","vermouth"],
+    sala:    ["forchetta","forchette","coltello","coltelli","cucchiaio","cucchiai","posata","posate","tovagliolo","tovaglioli","tovaglia","tovaglie","bicchiere","bicchieri","piatto","piatti","calice","calici","cannuccia","cannucce"],
+    puliz:   ["detergente","detersivo","sgrassatore","spugna","panno","guanti","sapone","scottex"],
   };
 
   for (const [catStem, keywords] of Object.entries(SYNONYMS)) {
-    if (keywords.some(kw => text.includes(kw))) {
+    if (keywords.some(kw => wordBoundaryIncludes(text, kw))) {
       // Cerca una categoria che abbia una parola che inizia con `catStem`
       const cat = categories.find(c =>
         c.name.toLowerCase().split(/[\s&\-,]+/).some(w => w.startsWith(catStem))
@@ -107,4 +109,11 @@ function tokenize(s: string): string[] {
     .normalize("NFD").replace(/[̀-ͯ]/g, "")  // toglie accenti
     .split(/[^a-z0-9]+/i)
     .filter(t => t.length >= 3);
+}
+
+// `text` contiene `kw` come PAROLA intera (non come sottostringa). Evita falsi
+// positivi tipo "ciliegino" che matcha "gin".
+function wordBoundaryIncludes(text: string, kw: string): boolean {
+  const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  return new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, "i").test(text);
 }
