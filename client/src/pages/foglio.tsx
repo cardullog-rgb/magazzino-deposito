@@ -6,8 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, Plus, Minus, X, AlertTriangle, CheckCircle2, Undo2 } from "lucide-react";
-import type { Product, Category, Sheet, SheetRow } from "@shared/schema";
+import { Search, Plus, Minus, X, AlertTriangle, CheckCircle2, Undo2, ArrowDownCircle, Clock } from "lucide-react";
+import type { Product, Category, Sheet, SheetRow, Movement } from "@shared/schema";
 
 type EnrichedRow = SheetRow & { product: Product; category: Category };
 type CurrentSheet = { sheet: Sheet; rows: EnrichedRow[] };
@@ -69,6 +69,36 @@ export default function FoglioPage() {
     queryKey: ["/api/sheet/current"],
     refetchInterval: 30000,
   });
+
+  // Movimenti di oggi (per il riepilogo + lista "Uscite di oggi").
+  // Calcolato dal client invalidando ogni minuto per riflettere il passare delle ore.
+  const todayStart = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+  }, []);
+  const { data: todayMovements = [] } = useQuery<Movement[]>({
+    queryKey: ["/api/movements", { from: todayStart }],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/movements?from=${todayStart}&limit=500`);
+      return res.json();
+    },
+    refetchInterval: 20000,
+  });
+
+  // Movimenti arricchiti col nome prodotto (lookup dal foglio corrente)
+  const productById = useMemo(() => {
+    const m = new Map<number, Product>();
+    if (data) for (const r of data.rows) m.set(r.product.id, r.product);
+    return m;
+  }, [data]);
+
+  const todayScarichi = useMemo(() => {
+    return todayMovements
+      .filter(m => m.type === "scarico")
+      .slice(0, 12); // ultime 12, le più recenti (già ordinate desc dall'API)
+  }, [todayMovements]);
+
+  const todayCarichi = useMemo(() => todayMovements.filter(m => m.type === "carico").length, [todayMovements]);
+  const todayUsciteCount = useMemo(() => todayMovements.filter(m => m.type === "scarico").length, [todayMovements]);
 
   // Pulizia timer all'unmount.
   useEffect(() => () => {
@@ -132,6 +162,7 @@ export default function FoglioPage() {
     onSuccess: (data: any, vars) => {
       qc.invalidateQueries({ queryKey: ["/api/sheet/current"] });
       qc.invalidateQueries({ queryKey: ["/api/products"] });
+      qc.invalidateQueries({ queryKey: ["/api/movements"] });
       const row = editing?.row;
       if (data?.movement && row) {
         setLastAction({
@@ -163,6 +194,7 @@ export default function FoglioPage() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["/api/sheet/current"] });
       qc.invalidateQueries({ queryKey: ["/api/products"] });
+      qc.invalidateQueries({ queryKey: ["/api/movements"] });
       if (data?.movement) {
         setLastAction({
           movementId: data.movement.id,
@@ -185,6 +217,7 @@ export default function FoglioPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/sheet/current"] });
       qc.invalidateQueries({ queryKey: ["/api/products"] });
+      qc.invalidateQueries({ queryKey: ["/api/movements"] });
       setLastAction(null);
       if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
     },
@@ -251,13 +284,26 @@ export default function FoglioPage() {
       {/* ─── HEADER ─────────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-5 py-3 border-b shrink-0 flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-base sm:text-lg font-semibold leading-tight truncate">
-            {sheet.name}
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {data.rows.length} prodotti · {alertsCount > 0 ? (
-              <span style={{ color: "hsl(var(--status-low))" }}>{alertsCount} sotto soglia</span>
-            ) : <span style={{ color: "hsl(var(--status-ok))" }}>tutto in ordine</span>}
+          <h1 className="text-base sm:text-lg font-semibold leading-tight">Inventario</h1>
+          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>Oggi:</span>
+            <span className="font-mono tabular-nums" style={{ color: "hsl(var(--status-scarico))" }}>
+              {todayUsciteCount} uscite
+            </span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="font-mono tabular-nums" style={{ color: "hsl(var(--status-carico))" }}>
+              {todayCarichi} carichi
+            </span>
+            <span className="text-muted-foreground/40">·</span>
+            {alertsCount > 0 ? (
+              <span className="font-mono tabular-nums" style={{ color: "hsl(var(--status-low))" }}>
+                {alertsCount} sotto soglia
+              </span>
+            ) : (
+              <span style={{ color: "hsl(var(--status-ok))" }}>tutto in ordine</span>
+            )}
+            <span className="text-muted-foreground/40">·</span>
+            <span className="text-muted-foreground/70 truncate">{sheet.name}</span>
           </p>
         </div>
         {isAdmin && sheet.status === "open" && (
@@ -267,10 +313,47 @@ export default function FoglioPage() {
             size="sm"
             data-testid="button-close-sheet"
           >
-            Chiudi foglio
+            Chiudi settimana
           </Button>
         )}
       </div>
+
+      {/* ─── USCITE DI OGGI (cronologia) ─────────────────────────────────── */}
+      {todayScarichi.length > 0 && (
+        <div className="px-4 sm:px-5 py-2 border-b shrink-0" style={{ background: "hsl(var(--muted) / 0.3)" }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <ArrowDownCircle className="w-3.5 h-3.5" style={{ color: "hsl(var(--status-scarico))" }} />
+            <span className="text-[11px] uppercase tracking-wide font-medium text-muted-foreground">
+              Uscite di oggi
+            </span>
+            <span className="text-[11px] text-muted-foreground/60">· {todayUsciteCount}</span>
+          </div>
+          <div className="flex gap-1.5 flex-wrap max-h-16 overflow-y-auto scrollbar-thin">
+            {todayScarichi.map(m => {
+              const prod = productById.get(m.productId);
+              return (
+                <div
+                  key={m.id}
+                  data-testid={`today-scarico-${m.id}`}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background text-xs"
+                  title={new Date(m.createdAt).toLocaleString("it-IT")}
+                >
+                  <Clock className="w-3 h-3 text-muted-foreground/60" />
+                  <span className="font-mono tabular-nums text-muted-foreground">
+                    {new Date(m.createdAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span className="font-mono tabular-nums font-medium" style={{ color: "hsl(var(--status-scarico))" }}>
+                    −{fmt(m.quantity)}
+                  </span>
+                  <span className="truncate max-w-32">
+                    {prod ? prod.name : `#${m.productId}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ─── FILTRI ─────────────────────────────────────────────────────── */}
       <div className="px-4 sm:px-5 py-2.5 border-b flex items-center gap-2 flex-wrap shrink-0 bg-background">

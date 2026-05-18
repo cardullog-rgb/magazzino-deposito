@@ -11,7 +11,7 @@ import type { Product } from "@shared/schema";
 
 // Voci sempre visibili (anche allo staff sull'iPad)
 const navItemsAll = [
-  { title: "Foglio settimanale", href: "/",            icon: ClipboardList },
+  { title: "Inventario",         href: "/",            icon: ClipboardList },
   { title: "Lista spesa",        href: "/lista-spesa", icon: ShoppingCart },
 ];
 
