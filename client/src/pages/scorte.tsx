@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Plus, Pencil, ArrowUpCircle, ArrowDownCircle, RefreshCw, Package, X, ChevronDown, ChevronUp, Sparkles, CornerDownLeft, SlidersHorizontal } from "lucide-react";
 import { InlineEdit } from "@/components/inline-edit";
 import { suggestCategoryId } from "@/lib/suggest-category";
-import { parseProduct } from "@/lib/parse-product";
+import { parseProduct, inferCategoryTemplate } from "@/lib/parse-product";
 import type { Product, Category } from "@shared/schema";
 
 type Level = "out" | "low" | "ok";
@@ -206,11 +206,21 @@ export default function ScortePage() {
           <QuickAddProduct
             categories={categories}
             products={products}
-            onCreate={async (payload) => {
+            onCreate={async (payload, opts) => {
               await apiRequest("POST", "/api/products", payload);
               qc.invalidateQueries({ queryKey: ["/api/products"] });
+              qc.invalidateQueries({ queryKey: ["/api/categories"] });
               qc.invalidateQueries({ queryKey: ["/api/sheet/current"] });
-              toast({ title: "Prodotto aggiunto", description: payload.name });
+              toast({
+                title: "Prodotto aggiunto",
+                description: opts?.createdCategory
+                  ? `${payload.name} · nuova categoria “${opts.createdCategory}”`
+                  : payload.name,
+              });
+            }}
+            onCreateCategory={async (tpl) => {
+              const res = await apiRequest("POST", "/api/categories", tpl);
+              return res.json();
             }}
             onOpenAdvanced={openNew}
           />
@@ -573,36 +583,66 @@ export default function ScortePage() {
    QUICK ADD PRODUCT — una riga di testo, preview live, Enter salva
    ═══════════════════════════════════════════════════════════════════════ */
 function QuickAddProduct({
-  categories, products, onCreate, onOpenAdvanced,
+  categories, products, onCreate, onCreateCategory, onOpenAdvanced,
 }: {
   categories: Category[];
   products: Product[];
-  onCreate: (payload: any) => Promise<void>;
+  onCreate: (payload: any, opts?: { createdCategory?: string }) => Promise<void>;
+  onCreateCategory: (tpl: any) => Promise<Category>;
   onOpenAdvanced: () => void;
 }) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
 
   const parsed = useMemo(() => parseProduct(text), [text]);
-  const catId = useMemo(() => {
+  // Tentativo 1: categoria esistente che matcha il prodotto
+  const matchedCatId = useMemo(() => {
     if (!parsed.name) return null;
     return suggestCategoryId(parsed.name, parsed.brand, products, categories);
   }, [parsed, products, categories]);
-  const category = categories.find(c => c.id === catId);
+  // Tentativo 2: template (categoria che potrebbe essere creata al volo)
+  const template = useMemo(() => {
+    if (!parsed.name) return null;
+    return inferCategoryTemplate(`${parsed.name} ${parsed.brand}`);
+  }, [parsed]);
+  // Categoria mostrata in preview: quella esistente se c'è, altrimenti il template
+  const previewCategory = matchedCatId
+    ? categories.find(c => c.id === matchedCatId)
+    : template;
+  const previewIsNew = !matchedCatId && !!template;
 
   async function submit() {
     if (!parsed.name || pending) return;
-    if (!catId) {
-      // niente categoria suggerita: apri il dialog avanzato pre-popolato
-      onOpenAdvanced();
-      return;
-    }
     setPending(true);
     try {
+      let categoryId = matchedCatId;
+      let createdCategoryName: string | undefined;
+
+      // Se non c'è categoria esistente, prova a matchare per nome con una
+      // del DB (case insensitive) prima di crearla.
+      if (!categoryId && template) {
+        const existing = categories.find(
+          c => c.name.toLowerCase() === template.name.toLowerCase()
+        );
+        if (existing) {
+          categoryId = existing.id;
+        } else {
+          const created = await onCreateCategory(template);
+          categoryId = created.id;
+          createdCategoryName = created.name;
+        }
+      }
+
+      if (!categoryId) {
+        // proprio non sappiamo che fare: fallback al dialog avanzato
+        onOpenAdvanced();
+        return;
+      }
+
       await onCreate({
         name: parsed.name,
         brand: parsed.brand,
-        categoryId: catId,
+        categoryId,
         unit: parsed.unit,
         unitSize: parsed.unitSize,
         packSize: parsed.packSize,
@@ -613,7 +653,7 @@ function QuickAddProduct({
         notes: "",
         active: true,
         supplier: "",
-      });
+      }, createdCategoryName ? { createdCategory: createdCategoryName } : undefined);
       setText("");
     } finally {
       setPending(false);
@@ -637,11 +677,17 @@ function QuickAddProduct({
       {/* Preview chip */}
       {text.trim() && (
         <div className="hidden md:flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-muted/60 max-w-xs truncate"
-             title={`${parsed.unit}${parsed.unitSize ? ` · ${parsed.unitSize}` : ""}${parsed.packSize > 1 ? ` · pack ${parsed.packSize}` : ""}`}>
-          {category ? (
+             title={`${parsed.unit}${parsed.unitSize ? ` · ${parsed.unitSize}` : ""}${parsed.packSize > 1 ? ` · pack ${parsed.packSize}` : ""}${previewIsNew ? " · categoria nuova" : ""}`}>
+          {previewCategory ? (
             <span className="flex items-center gap-1">
-              <span>{category.icon}</span>
-              <span>{category.name}</span>
+              <span>{previewCategory.icon}</span>
+              <span>{previewCategory.name}</span>
+              {previewIsNew && (
+                <span className="text-[10px] uppercase tracking-wide px-1 rounded"
+                      style={{ background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))" }}>
+                  nuova
+                </span>
+              )}
             </span>
           ) : (
             <span className="text-muted-foreground italic">categoria?</span>
@@ -657,7 +703,7 @@ function QuickAddProduct({
         disabled={pending || !parsed.name}
         data-testid="button-quick-add-submit"
         size="sm"
-        title={!catId && parsed.name ? "Apre il form completo per scegliere la categoria" : "Aggiungi"}
+        title="Aggiungi"
       >
         {pending ? "…" : (
           <>

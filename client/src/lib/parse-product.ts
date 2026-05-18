@@ -156,3 +156,102 @@ function capitalize(s: string): string {
     return w[0].toUpperCase() + w.slice(1);
   }).join(" ");
 }
+
+// ─── Inferenza categoria dal testo libero ───────────────────────────────────
+// Quando l'utente scrive "fusto birra Messina 30lt" e la categoria "Birre"
+// NON esiste ancora, deduciamo qui un template ragionevole e la creiamo al
+// volo lato server. Fallback: "Altro" (sezione bevande).
+export interface CategoryTemplate {
+  name: string;
+  icon: string;
+  color: string;
+  macroCategory: string;
+  section: string;       // "bevande" | "cucina"
+  sortOrder: number;
+}
+
+const CATEGORY_TEMPLATES: Array<{ keywords: string[]; tpl: CategoryTemplate }> = [
+  { keywords: ["acqua","ferrarelle","panna","sanpellegrino","levissima","uliveto","lete"],
+    tpl: { name: "Acqua", icon: "💧", color: "#3b82f6", macroCategory: "acqua", section: "bevande", sortOrder: 1 } },
+
+  { keywords: ["birra","fusto","heineken","moretti","peroni","corona","ichnusa","ceres","tuborg","forst","menabrea","becks","carlsberg","budweiser","leffe","duvel","chimay","messina","affligem","blanche","erdinger","fischer"],
+    tpl: { name: "Birre", icon: "🍺", color: "#eab308", macroCategory: "birre", section: "bevande", sortOrder: 2 } },
+
+  { keywords: ["cola","coca","fanta","sprite","schweppes","gazzosa","chinotto","aranciata","limonata","ginger","tonica","redbull","red bull","pepsi"],
+    tpl: { name: "Bibite", icon: "🥤", color: "#22c55e", macroCategory: "analcolici", section: "bevande", sortOrder: 3 } },
+
+  { keywords: ["succo","ace"],
+    tpl: { name: "Succhi", icon: "🧃", color: "#f97316", macroCategory: "analcolici", section: "bevande", sortOrder: 4 } },
+
+  { keywords: ["amaro","fernet","montenegro","averna","ramazzotti","branca","jagermeister","jägermeister","baileys","limoncello","sambuca","grappa","unicum","disaronno","amaretto"],
+    tpl: { name: "Amari", icon: "🥃", color: "#92400e", macroCategory: "alcolici", section: "bevande", sortOrder: 5 } },
+
+  { keywords: ["whisky","whiskey","jack daniel","jameson","ballantine","cognac","rum","zacapa","havana","bourbon","bushmills","jefferson"],
+    tpl: { name: "Spirits", icon: "🍸", color: "#7c3aed", macroCategory: "alcolici", section: "bevande", sortOrder: 6 } },
+
+  { keywords: ["gin","bombay","tanqueray","hendrick","gordon","mare","portofino","etsu"],
+    tpl: { name: "Gin", icon: "🫙", color: "#0891b2", macroCategory: "alcolici", section: "bevande", sortOrder: 7 } },
+
+  { keywords: ["vodka","absolut","belvedere","grey goose","skyy","beluga","smirnoff"],
+    tpl: { name: "Vodka", icon: "🧊", color: "#6366f1", macroCategory: "alcolici", section: "bevande", sortOrder: 8 } },
+
+  { keywords: ["tequila","mezcal","jose cuervo","patron","sierra","olmeca","don julio"],
+    tpl: { name: "Tequila & Rum", icon: "🌊", color: "#059669", macroCategory: "alcolici", section: "bevande", sortOrder: 9 } },
+
+  { keywords: ["aperol","campari","martini","cinzano","lillet","vermouth","spritz"],
+    tpl: { name: "Aperitivi", icon: "🍊", color: "#ea580c", macroCategory: "alcolici", section: "bevande", sortOrder: 10 } },
+
+  { keywords: ["vino bianco","bianco","chardonnay","sauvignon","grillo","catarratto","prosecco"],
+    tpl: { name: "Vini Bianchi", icon: "🥂", color: "#fde047", macroCategory: "vini", section: "bevande", sortOrder: 11 } },
+
+  { keywords: ["vino rosso","rosso","cabernet","merlot","nero d'avola","etna rosso","frappato","syrah","nerello"],
+    tpl: { name: "Vini Rossi", icon: "🍷", color: "#991b1b", macroCategory: "vini", section: "bevande", sortOrder: 12 } },
+
+  { keywords: ["vino","passito","zibibbo","moscato","marsala"],
+    tpl: { name: "Vini", icon: "🍷", color: "#991b1b", macroCategory: "vini", section: "bevande", sortOrder: 13 } },
+
+  { keywords: ["farina","semola","lievito","impasto"],
+    tpl: { name: "Farine", icon: "🌾", color: "#d97706", macroCategory: "cucina", section: "cucina", sortOrder: 20 } },
+
+  { keywords: ["pomodoro","pelati","passata","ciliegino","datterino","pachino","conserva"],
+    tpl: { name: "Pomodoro", icon: "🍅", color: "#ef4444", macroCategory: "cucina", section: "cucina", sortOrder: 21 } },
+
+  { keywords: ["mozzarella","ricotta","formaggio","parmigiano","gorgonzola","fontina","burrata","stracchino","grana","pecorino","provola","scamorza","caciocavallo","fior di latte"],
+    tpl: { name: "Latticini", icon: "🧀", color: "#fbbf24", macroCategory: "cucina", section: "cucina", sortOrder: 22 } },
+
+  { keywords: ["prosciutto","salame","mortadella","speck","bresaola","coppa","'nduja","nduja","pancetta","guanciale","lardo","salume"],
+    tpl: { name: "Salumi", icon: "🥩", color: "#b45309", macroCategory: "cucina", section: "cucina", sortOrder: 23 } },
+
+  { keywords: ["basilico","insalata","rucola","spinaci","carciofi","carote","melanzane","zucchine","cipolla","verdura","peperone","funghi"],
+    tpl: { name: "Verdure", icon: "🥦", color: "#16a34a", macroCategory: "cucina", section: "cucina", sortOrder: 24 } },
+
+  { keywords: ["olio","aceto","origano","sale","spezie","peperoncino"],
+    tpl: { name: "Oli & Condimenti", icon: "🫙", color: "#ca8a04", macroCategory: "cucina", section: "cucina", sortOrder: 25 } },
+
+  { keywords: ["tonno","acciughe","capperi","gamberi","calamari","polpo","cozze","vongole","sgombro","pesce"],
+    tpl: { name: "Pesce", icon: "🐟", color: "#0ea5e9", macroCategory: "cucina", section: "cucina", sortOrder: 26 } },
+
+  { keywords: ["pasta","caffè","caffe","zucchero","riso","biscotti","cracker"],
+    tpl: { name: "Dispensa", icon: "🥫", color: "#78716c", macroCategory: "cucina", section: "cucina", sortOrder: 27 } },
+];
+
+/**
+ * Inferisce un template di categoria a partire dal testo libero del prodotto.
+ * Restituisce sempre qualcosa: il fallback è "Altro" se nulla matcha.
+ */
+export function inferCategoryTemplate(text: string): CategoryTemplate {
+  const lc = text.toLowerCase();
+  for (const { keywords, tpl } of CATEGORY_TEMPLATES) {
+    for (const kw of keywords) {
+      if (lc.includes(kw)) return tpl;
+    }
+  }
+  return {
+    name: "Altro",
+    icon: "📦",
+    color: "#94a3b8",
+    macroCategory: "altro",
+    section: "cucina",
+    sortOrder: 99,
+  };
+}
