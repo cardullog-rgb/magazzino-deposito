@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Pencil, ArrowUpCircle, ArrowDownCircle, RefreshCw, Package, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Plus, Pencil, ArrowUpCircle, ArrowDownCircle, RefreshCw, Package, X, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { InlineEdit } from "@/components/inline-edit";
+import { suggestCategoryId } from "@/lib/suggest-category";
 import type { Product, Category } from "@shared/schema";
 
 type Level = "out" | "low" | "ok";
@@ -63,6 +64,10 @@ export default function ScortePage() {
     name: "", brand: "", unit: "pz", unitSize: "", categoryId: "",
     currentStock: "0", minStock: "2", idealStock: "5", location: "", notes: "",
   });
+  // True quando l'utente ha selezionato la categoria a mano (non auto-suggest).
+  const [categoryManuallySet, setCategoryManuallySet] = useState(false);
+  // True quando la categoria corrente è stata scelta dall'auto-suggest.
+  const [categoryAutoSuggested, setCategoryAutoSuggested] = useState(false);
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"], refetchInterval: 10000,
@@ -150,10 +155,25 @@ export default function ScortePage() {
     },
   });
 
+  // Auto-suggest categoria in base a nome+marca, finché l'utente non sceglie a mano.
+  useEffect(() => {
+    if (!isNewProduct) return;
+    if (categoryManuallySet) return;
+    const suggested = suggestCategoryId(productForm.name, productForm.brand, products, categories);
+    if (suggested === null) return;
+    const suggestedStr = String(suggested);
+    if (productForm.categoryId !== suggestedStr) {
+      setProductForm(f => ({ ...f, categoryId: suggestedStr }));
+      setCategoryAutoSuggested(true);
+    }
+  }, [productForm.name, productForm.brand, isNewProduct, categoryManuallySet, products, categories]);
+
   const openNew = () => {
-    setProductForm({ name: "", brand: "", unit: "pz", unitSize: "", categoryId: categories[0]?.id.toString() ?? "",
+    setProductForm({ name: "", brand: "", unit: "pz", unitSize: "", categoryId: "",
       currentStock: "0", minStock: "2", idealStock: "5", location: "", notes: "" });
     setIsNewProduct(true); setEditProduct(null);
+    setCategoryManuallySet(false);
+    setCategoryAutoSuggested(false);
   };
   const openEdit = (p: Product) => {
     setProductForm({
@@ -165,6 +185,8 @@ export default function ScortePage() {
       location: p.location, notes: p.notes,
     });
     setEditProduct(p); setIsNewProduct(false);
+    setCategoryManuallySet(true);  // in edit la categoria esistente è scelta
+    setCategoryAutoSuggested(false);
   };
 
   const sectionCats = filterSection === "all"
@@ -462,8 +484,27 @@ export default function ScortePage() {
                 <Input data-testid="input-product-brand" value={productForm.brand} onChange={e => setProductForm(f => ({ ...f, brand: e.target.value }))} placeholder="es. Moretti" />
               </div>
               <div className="space-y-1.5">
-                <Label>Categoria</Label>
-                <Select value={productForm.categoryId} onValueChange={v => setProductForm(f => ({ ...f, categoryId: v }))}>
+                <Label className="flex items-center gap-1.5">
+                  Categoria
+                  {categoryAutoSuggested && !categoryManuallySet && productForm.categoryId && (
+                    <span
+                      className="inline-flex items-center gap-0.5 text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded"
+                      style={{ background: "hsl(var(--primary) / 0.12)", color: "hsl(var(--primary))" }}
+                      title="Categoria suggerita dal nome — modificala se non è quella giusta"
+                    >
+                      <Sparkles className="w-2.5 h-2.5" />
+                      auto
+                    </span>
+                  )}
+                </Label>
+                <Select
+                  value={productForm.categoryId}
+                  onValueChange={v => {
+                    setProductForm(f => ({ ...f, categoryId: v }));
+                    setCategoryManuallySet(true);
+                    setCategoryAutoSuggested(false);
+                  }}
+                >
                   <SelectTrigger data-testid="select-product-cat"><SelectValue placeholder="Seleziona…" /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.icon} {c.name}</SelectItem>)}
