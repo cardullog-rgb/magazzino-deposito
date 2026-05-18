@@ -79,11 +79,12 @@ git push -u origin main
 
 Nel tuo servizio Railway → tab **"Variables"** → aggiungi:
 
-| Variabile | Valore |
-|-----------|--------|
-| `DB_PATH` | `/data/data.db` |
-| `NODE_ENV` | `production` |
-| `PORT` | `8080` |
+| Variabile | Valore | Note |
+|-----------|--------|------|
+| `DB_PATH` | `/data/data.db` | Persistenza sul volume |
+| `NODE_ENV` | `production` | |
+| `PORT` | `8080` | |
+| `INITIAL_ADMIN_PASSWORD` | (a scelta) | Opzionale — password admin iniziale; default `changeme`. Andrà cambiata al primo login. |
 
 Clicca **"Deploy"** dopo aver salvato le variabili.
 
@@ -103,12 +104,13 @@ Clicca **"Deploy"** dopo aver salvato le variabili.
 
 Apri il tuo URL nel browser e accedi con:
 
-| Username | Password | Ruolo |
-|----------|----------|-------|
-| `admin` | `admin123` | Admin |
-| `staff` | `staff123` | Staff |
+| Username | Password iniziale |
+|----------|---------|
+| `admin` | `changeme` (o quella impostata in `INITIAL_ADMIN_PASSWORD`) |
 
-**Cambia subito le password** dalla sezione Utenti dopo il primo accesso!
+**Al primo login l'app obbliga a scegliere una password personale** prima di mostrare qualunque schermata. Non c'è modo di saltare il passaggio.
+
+Gli utenti staff li crei dalla pagina **Utenti** una volta dentro (admin → Utenti → Nuovo utente).
 
 ---
 
@@ -139,10 +141,13 @@ Railway rideploya in automatico in 2-3 minuti. I dati rimangono intatti.
 ## Sicurezza inclusa
 
 - ✅ HTTPS automatico (connessione cifrata)
+- ✅ Password hashate con scrypt (mai memorizzate in chiaro)
+- ✅ Cambio password obbligatorio al primo login admin
 - ✅ Rate limiting sul login (max 20 tentativi per 15 minuti)
 - ✅ URL non indovinabile
 - ✅ Login obbligatorio per qualsiasi dato
-- ✅ Ruoli admin/staff (lo staff non vede la gestione utenti)
+- ✅ Ruoli admin/staff (lo staff non può modificare prodotti, categorie, utenti)
+- ✅ Elevazione admin temporanea (5 min) per modifiche al volo dall'iPad staff
 
 ---
 

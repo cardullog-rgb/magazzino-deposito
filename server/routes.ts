@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
+import { verifyPassword } from "./crypto-password";
 
 // ─── Tipi locali per identificare l'utente sulla request ──────────────────────
 // In assenza di session middleware (non ancora wired in index.ts), leggiamo
@@ -59,9 +60,33 @@ export function registerRoutes(httpServer: Server, app: Express): void {
     const { username, password } = req.body ?? {};
     if (!username || !password) return res.status(400).json({ error: "Credenziali mancanti" });
     const user = storage.getUserByUsername(username);
-    if (!user || user.password !== password || !user.active)
+    if (!user || !user.active || !verifyPassword(password, user.password)) {
       return res.status(401).json({ error: "Username o password errati" });
+    }
     const { password: _, ...safe } = user;
+    res.json(safe);
+  });
+
+  // Cambio password (anche obbligatorio al primo login).
+  app.post("/api/auth/change-password", requireAuth, (req: AuthedRequest, res) => {
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+      return res.status(400).json({ error: "La nuova password deve avere almeno 6 caratteri" });
+    }
+    const user = storage.getUserById(req.authUser!.id);
+    if (!user) return res.status(404).json({ error: "Utente non trovato" });
+    // Verifica la password attuale (saltabile solo se l'utente è in mustChangePassword)
+    if (!user.mustChangePassword) {
+      if (!currentPassword || !verifyPassword(currentPassword, user.password)) {
+        return res.status(401).json({ error: "Password attuale errata" });
+      }
+    }
+    const updated = storage.updateUser(user.id, {
+      password: newPassword,
+      mustChangePassword: false,
+    } as any);
+    if (!updated) return res.status(500).json({ error: "Aggiornamento fallito" });
+    const { password: _, ...safe } = updated;
     res.json(safe);
   });
 

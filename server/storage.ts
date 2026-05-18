@@ -10,6 +10,7 @@ import {
   type Sheet,
   type SheetRow,
 } from "@shared/schema";
+import { hashPassword, verifyPassword, isHashedPassword } from "./crypto-password";
 
 // DB_PATH env var → Railway persistent volume (/data/data.db)
 // Falls back to local data.db for development
@@ -26,7 +27,8 @@ sqlite.exec(`
     password TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'staff',
     color TEXT NOT NULL DEFAULT '#f97316',
-    active INTEGER NOT NULL DEFAULT 1
+    active INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +104,20 @@ ensureColumn("categories", "macro_category", "macro_category TEXT NOT NULL DEFAU
 ensureColumn("products", "pack_size", "pack_size REAL NOT NULL DEFAULT 1");
 ensureColumn("products", "supplier", "supplier TEXT NOT NULL DEFAULT ''");
 ensureColumn("movements", "sheet_id", "sheet_id INTEGER NOT NULL DEFAULT 0");
+ensureColumn("users", "must_change_password", "must_change_password INTEGER NOT NULL DEFAULT 0");
+
+// ─── Migrazione one-time: hasha eventuali password ancora in plain text ──────
+// Se l'app è stata aggiornata da una versione precedente con password in
+// chiaro, le promuoviamo automaticamente al primo boot.
+{
+  const rows = sqlite.prepare("SELECT id, password FROM users").all() as Array<{ id: number; password: string }>;
+  const update = sqlite.prepare("UPDATE users SET password = ? WHERE id = ?");
+  for (const r of rows) {
+    if (!isHashedPassword(r.password)) {
+      update.run(hashPassword(r.password), r.id);
+    }
+  }
+}
 
 // ─── Helper periodo settimanale (lunedì → domenica) ───────────────────────────
 function getWeekRange(d: Date): { start: number; end: number } {
@@ -126,244 +142,22 @@ function formatWeekName(start: number, end: number): string {
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
+// Prima installazione: crea solo l'utente admin iniziale. Nessun prodotto né
+// categoria demo: il gestore parte da zero e costruisce il proprio catalogo.
+// La password iniziale è "changeme" (o INITIAL_ADMIN_PASSWORD se impostata
+// nell'env): deve essere cambiata al primo login (mustChangePassword=true).
 const uc = db.select({ c: sql<number>`count(*)` }).from(users).get();
 if (!uc || uc.c === 0) {
-  db.insert(users).values([
-    { name: "Roberto Admin", username: "admin", password: "admin123", role: "admin", color: "#f97316" },
-    { name: "Staff Magazzino", username: "staff", password: "staff123", role: "staff", color: "#3b82f6" },
-  ]).run();
-
-  // ─── Categorie Bevande ────────────────────────────────────────────────────
-  // Ogni categoria porta la sua macroCategory per raggrupparle nella UI.
-  const catDefs = [
-    // Bevande – analcolici
-    { name: "Acqua", section: "bevande", macroCategory: "acqua", icon: "💧", color: "#3b82f6", sortOrder: 1 },
-    { name: "Birra & Fusti", section: "bevande", macroCategory: "birre", icon: "🍺", color: "#eab308", sortOrder: 2 },
-    { name: "Bibite & Soft Drink", section: "bevande", macroCategory: "analcolici", icon: "🥤", color: "#22c55e", sortOrder: 3 },
-    { name: "Succhi", section: "bevande", macroCategory: "analcolici", icon: "🧃", color: "#f97316", sortOrder: 4 },
-    // Bevande – vini (la vecchia categoria generica "Vino" non viene più seedata,
-    // sostituita dalle 3 categorie specifiche più sotto)
-    { name: "Amari & Digestivi", section: "bevande", macroCategory: "alcolici", icon: "🥃", color: "#92400e", sortOrder: 6 },
-    { name: "Spirits & Liquori", section: "bevande", macroCategory: "alcolici", icon: "🍸", color: "#7c3aed", sortOrder: 7 },
-    { name: "Gin", section: "bevande", macroCategory: "alcolici", icon: "🫙", color: "#0891b2", sortOrder: 8 },
-    { name: "Vodka", section: "bevande", macroCategory: "alcolici", icon: "🧊", color: "#6366f1", sortOrder: 9 },
-    { name: "Tequila & Rum & Altro", section: "bevande", macroCategory: "alcolici", icon: "🌊", color: "#059669", sortOrder: 10 },
-    { name: "Aperitivi & Vermouth", section: "bevande", macroCategory: "alcolici", icon: "🍊", color: "#ea580c", sortOrder: 11 },
-    // Vini (tre nuove categorie specifiche)
-    { name: "Vini Bianchi", section: "bevande", macroCategory: "vini", icon: "🥂", color: "#fde047", sortOrder: 12 },
-    { name: "Vini Rossi", section: "bevande", macroCategory: "vini", icon: "🍷", color: "#991b1b", sortOrder: 13 },
-    { name: "Vini Dolci & Passiti", section: "bevande", macroCategory: "vini", icon: "🍯", color: "#f59e0b", sortOrder: 14 },
-    // Cucina
-    { name: "Farine & Impasto", section: "cucina", macroCategory: "cucina", icon: "🌾", color: "#d97706", sortOrder: 20 },
-    { name: "Pomodoro & Conserve", section: "cucina", macroCategory: "cucina", icon: "🍅", color: "#ef4444", sortOrder: 21 },
-    { name: "Latticini & Formaggi", section: "cucina", macroCategory: "cucina", icon: "🧀", color: "#fbbf24", sortOrder: 22 },
-    { name: "Salumi & Affettati", section: "cucina", macroCategory: "cucina", icon: "🥩", color: "#b45309", sortOrder: 23 },
-    { name: "Verdure & Ortaggi", section: "cucina", macroCategory: "cucina", icon: "🥦", color: "#16a34a", sortOrder: 24 },
-    { name: "Oli & Condimenti", section: "cucina", macroCategory: "cucina", icon: "🫙", color: "#ca8a04", sortOrder: 25 },
-    { name: "Pesce & Mare", section: "cucina", macroCategory: "cucina", icon: "🐟", color: "#0ea5e9", sortOrder: 26 },
-    { name: "Secchi & Dispensa", section: "cucina", macroCategory: "cucina", icon: "🥫", color: "#78716c", sortOrder: 27 },
-  ];
-
-  const cats = db.insert(categories).values(catDefs).returning().all();
-  const cm: Record<string, number> = {};
-  for (const c of cats) cm[c.name] = c.id;
-
-  // ─── Prodotti Bevande ─────────────────────────────────────────────────────
-
-  // ACQUA – casse da 12 bottiglie
-  db.insert(products).values([
-    { categoryId: cm["Acqua"], name: "Acqua Naturale", brand: "", unit: "cassa", unitSize: "24×0.5lt", packSize: 12, currentStock: 8, minStock: 4, idealStock: 12, location: "Magazzino" },
-    { categoryId: cm["Acqua"], name: "Acqua Frizzante", brand: "", unit: "cassa", unitSize: "24×0.5lt", packSize: 12, currentStock: 6, minStock: 4, idealStock: 10, location: "Magazzino" },
-    { categoryId: cm["Acqua"], name: "Acqua Ferrarelle", brand: "Ferrarelle", unit: "cassa", unitSize: "24×0.5lt", packSize: 12, currentStock: 4, minStock: 2, idealStock: 8, location: "Magazzino" },
-  ]).run();
-
-  // BIRRA & FUSTI – fusti packSize=1, bottiglie cassa da 24, bombola CO2 packSize=1
-  db.insert(products).values([
-    { categoryId: cm["Birra & Fusti"], name: "Fusto Heineken", brand: "Heineken", unit: "fusto", unitSize: "30lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Cantina" },
-    { categoryId: cm["Birra & Fusti"], name: "Fusto Affligem", brand: "Affligem", unit: "fusto", unitSize: "20lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Cantina" },
-    { categoryId: cm["Birra & Fusti"], name: "Fusto Messina", brand: "Messina", unit: "fusto", unitSize: "30lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Cantina" },
-    { categoryId: cm["Birra & Fusti"], name: "Bombola CO2", brand: "", unit: "pz", unitSize: "10kg", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Cantina" },
-    { categoryId: cm["Birra & Fusti"], name: "Heineken 0.0 33cl", brand: "Heineken", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Frigo Bar" },
-    { categoryId: cm["Birra & Fusti"], name: "Heineken 33cl", brand: "Heineken", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 3, minStock: 2, idealStock: 6, location: "Frigo Bar" },
-    { categoryId: cm["Birra & Fusti"], name: "Corona 33cl", brand: "Corona", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Frigo Bar" },
-    { categoryId: cm["Birra & Fusti"], name: "Erdinger", brand: "Erdinger", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 1, minStock: 1, idealStock: 3, location: "Frigo Bar" },
-    { categoryId: cm["Birra & Fusti"], name: "Fisher", brand: "Fischer", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 1, minStock: 1, idealStock: 3, location: "Frigo Bar" },
-    { categoryId: cm["Birra & Fusti"], name: "Blanche de Namur", brand: "Blanche de Namur", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 1, minStock: 1, idealStock: 2, location: "Frigo Bar" },
-  ]).run();
-
-  // BIBITE & SOFT – tutte cassa packSize=24, eccetto Coca-Cola 1lt (cassa da 12)
-  db.insert(products).values([
-    { categoryId: cm["Bibite & Soft Drink"], name: "Coca-Cola 33cl", brand: "Coca-Cola", unit: "cassa", unitSize: "24 latt.", packSize: 24, currentStock: 5, minStock: 3, idealStock: 8, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Coca Zero 33cl", brand: "Coca-Cola", unit: "cassa", unitSize: "24 latt.", packSize: 24, currentStock: 4, minStock: 2, idealStock: 6, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Coca-Cola 1lt", brand: "Coca-Cola", unit: "cassa", unitSize: "12 bt", packSize: 12, currentStock: 3, minStock: 2, idealStock: 6, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Chinotto", brand: "", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Gazzosa", brand: "", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Limonata", brand: "", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Aranciata Bio", brand: "", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Acqua Tonica Schweppes", brand: "Schweppes", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 3, minStock: 2, idealStock: 6, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Schweppes Lemon", brand: "Schweppes", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Magazzino" },
-    { categoryId: cm["Bibite & Soft Drink"], name: "Ginger Beer", brand: "", unit: "cassa", unitSize: "24 bt", packSize: 24, currentStock: 2, minStock: 1, idealStock: 4, location: "Magazzino" },
-  ]).run();
-
-  // SUCCHI – cassa da 12 brick
-  db.insert(products).values([
-    { categoryId: cm["Succhi"], name: "Succo Ananas", brand: "", unit: "cassa", unitSize: "12×200ml", packSize: 12, currentStock: 3, minStock: 2, idealStock: 6, location: "Magazzino" },
-    { categoryId: cm["Succhi"], name: "Succo Arancia", brand: "", unit: "cassa", unitSize: "12×200ml", packSize: 12, currentStock: 3, minStock: 2, idealStock: 6, location: "Magazzino" },
-    { categoryId: cm["Succhi"], name: "Succo Pesca", brand: "", unit: "cassa", unitSize: "12×200ml", packSize: 12, currentStock: 3, minStock: 2, idealStock: 6, location: "Magazzino" },
-  ]).run();
-
-  // AMARI & DIGESTIVI – tutte bottiglie singole packSize=1
-  // NB: i vini dolci ("Passito Vino alle Mandorle", "Zibibbo") sono spostati
-  // nella nuova categoria "Vini Dolci & Passiti".
-  db.insert(products).values([
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro Amara", brand: "Amara", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 3, minStock: 1, idealStock: 4, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaretto Disaronno", brand: "Disaronno", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro Unnimaffissu", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro Montenegro", brand: "Montenegro", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro Averna", brand: "Averna", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro del Capo", brand: "Del Capo", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro del Capo Piccante", brand: "Del Capo", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro dell'Etna", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Amaro Unicum", brand: "Unicum", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Branca Menta", brand: "Branca", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Fernet Branca", brand: "Branca", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Limoncello", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 3, minStock: 2, idealStock: 5, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Grappa Barricata 903", brand: "903", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Diciotto Lune", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Baileys", brand: "Baileys", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Grand Marnier", brand: "Grand Marnier", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Drambuie", brand: "Drambuie", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "St Germain", brand: "St Germain", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Kahlúa", brand: "Kahlúa", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Midori", brand: "Midori", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Malibu", brand: "Malibu", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Passoa Passion Fruit", brand: "Passoa", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Peachtree", brand: "Peachtree", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Sambuca", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Cointreau", brand: "Cointreau", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Triple Sec", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Amari & Digestivi"], name: "Curaçao Blu", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-  ]).run();
-
-  // SPIRITS & LIQUORI – bottiglie singole packSize=1
-  db.insert(products).values([
-    { categoryId: cm["Spirits & Liquori"], name: "Jefferson", brand: "Jefferson", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Jägermeister", brand: "Jägermeister", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Jack Daniel's", brand: "Jack Daniel's", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Ballantine's", brand: "Ballantine's", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Bushmills", brand: "Bushmills", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Martell Cognac", brand: "Martell", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Cognac Prime Uve", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Zacapa 23", brand: "Ron Zacapa", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Matusalem 7 Anni", brand: "Matusalem", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Pampero", brand: "Pampero", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Batida de Coco", brand: "Batida", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Vodka Raspberry", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Vodka alla Pesca", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Spirits & Liquori"], name: "Vodka alla Fragola", brand: "", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-  ]).run();
-
-  // GIN – bottiglie singole packSize=1
-  db.insert(products).values([
-    { categoryId: cm["Gin"], name: "Gin Bombay Sapphire", brand: "Bombay", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Gordon's", brand: "Gordon's", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Hendrick's", brand: "Hendrick's", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Tanqueray", brand: "Tanqueray", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Portofino", brand: "Portofino", unit: "bt", unitSize: "0.5lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Etsu", brand: "Etsu", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Panarea Island", brand: "Panarea", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Panarea Sunset", brand: "Panarea", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Etneum", brand: "Etneum", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Legend", brand: "Legend", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Gin"], name: "Gin Mare", brand: "Mare", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-  ]).run();
-
-  // VODKA – bottiglie singole packSize=1
-  db.insert(products).values([
-    { categoryId: cm["Vodka"], name: "Vodka Absolut", brand: "Absolut", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Vodka"], name: "Vodka Belvedere", brand: "Belvedere", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Vodka"], name: "Vodka Grey Goose", brand: "Grey Goose", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Vodka"], name: "Vodka Skyy", brand: "Skyy", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Vodka"], name: "Vodka Beluga", brand: "Beluga", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-  ]).run();
-
-  // TEQUILA & RUM & ALTRO – bottiglie singole packSize=1
-  db.insert(products).values([
-    { categoryId: cm["Tequila & Rum & Altro"], name: "Tequila Jose Cuervo Reposado", brand: "Jose Cuervo", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Tequila & Rum & Altro"], name: "Tequila Jose Cuervo Silver", brand: "Jose Cuervo", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 1, minStock: 1, idealStock: 2, location: "Bar" },
-    { categoryId: cm["Tequila & Rum & Altro"], name: "Havana Club 7 Anni", brand: "Havana Club", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Tequila & Rum & Altro"], name: "Havana Club 3 Anni", brand: "Havana Club", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-  ]).run();
-
-  // APERITIVI & VERMOUTH – bottiglie singole packSize=1
-  db.insert(products).values([
-    { categoryId: cm["Aperitivi & Vermouth"], name: "Aperol", brand: "Aperol", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 3, minStock: 2, idealStock: 5, location: "Bar" },
-    { categoryId: cm["Aperitivi & Vermouth"], name: "Campari", brand: "Campari", unit: "bt", unitSize: "0.7lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Aperitivi & Vermouth"], name: "Martini Bianco", brand: "Martini", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Aperitivi & Vermouth"], name: "Martini Rosso", brand: "Martini", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-    { categoryId: cm["Aperitivi & Vermouth"], name: "Martini Extra Dry", brand: "Martini", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Bar" },
-  ]).run();
-
-  // ─── Vini ─────────────────────────────────────────────────────────────────
-  // Parametri comuni: unit="bt", packSize=1, location="Cantina", minStock=2, idealStock=6.
-  // Bianchi e Rossi: unitSize="0.75lt". Passiti hanno taglio specifico.
-  db.insert(products).values([
-    // Bianchi
-    { categoryId: cm["Vini Bianchi"], name: "Carizza", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Cusumano Cubìa", brand: "Cusumano", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Ciuri (Cantine Florio)", brand: "Cantine Florio", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Tornatore Etna Bianco", brand: "Tornatore", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Grillo Mesa di Santa Tresa", brand: "Santa Tresa", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Iancura", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Murgo Tenuta San Michele", brand: "Murgo", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Gulfi Caricanti", brand: "Gulfi", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Borgo del Tiglio Prosecco", brand: "Borgo del Tiglio", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Carpenè Malvolti Prosecco", brand: "Carpenè Malvolti", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Bianchi"], name: "Chardonnay Principi di Butera", brand: "Principi di Butera", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    // Rossi
-    { categoryId: cm["Vini Rossi"], name: "Tornatore Etna Rosso", brand: "Tornatore", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Surya Nero d'Avola", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Sul Vulcano Etna Rosso", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Santa Tresa Frappato", brand: "Santa Tresa", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Santa Tresa Cerasuolo di Vittoria", brand: "Santa Tresa", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Maria Costanza Etna Rosso", brand: "Maria Costanza", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Kayd Syrah", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Cottanèra Etna Rosso", brand: "Cottanèra", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Buttitta", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "Anatra Nero d'Avola", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    { categoryId: cm["Vini Rossi"], name: "L'Amuri Nero d'Avola", brand: "", unit: "bt", unitSize: "0.75lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 6, location: "Cantina" },
-    // Passiti (formato 0.5lt)
-    { categoryId: cm["Vini Dolci & Passiti"], name: "Passito Vino alle Mandorle", brand: "", unit: "bt", unitSize: "0.5lt", packSize: 1, currentStock: 3, minStock: 1, idealStock: 4, location: "Cantina" },
-    { categoryId: cm["Vini Dolci & Passiti"], name: "Zibibbo", brand: "", unit: "bt", unitSize: "0.5lt", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Cantina" },
-  ]).run();
-
-  // ─── Prodotti Cucina (base) ───────────────────────────────────────────────
-  // packSize=1 di default; per il pomodoro "6×400g" packSize=6 (cartone da 6 latte).
-  db.insert(products).values([
-    { categoryId: cm["Farine & Impasto"], name: "Farina 00 W330", brand: "Caputo", unit: "sacco", unitSize: "25kg", packSize: 1, currentStock: 4, minStock: 2, idealStock: 8, location: "Dispensa" },
-    { categoryId: cm["Farine & Impasto"], name: "Semola Rimacinata", brand: "Lo Conte", unit: "sacco", unitSize: "25kg", packSize: 1, currentStock: 2, minStock: 1, idealStock: 4, location: "Dispensa" },
-    { categoryId: cm["Farine & Impasto"], name: "Lievito di Birra Fresco", brand: "Lesaffre", unit: "pz", unitSize: "500g", packSize: 1, currentStock: 8, minStock: 4, idealStock: 12, location: "Frigo Cucina" },
-    { categoryId: cm["Farine & Impasto"], name: "Sale Grosso", brand: "", unit: "sacco", unitSize: "10kg", packSize: 1, currentStock: 3, minStock: 1, idealStock: 5, location: "Dispensa" },
-    { categoryId: cm["Pomodoro & Conserve"], name: "Pomodoro San Marzano DOP", brand: "La Valle", unit: "cartone", unitSize: "6×400g", packSize: 6, currentStock: 12, minStock: 6, idealStock: 20, location: "Dispensa" },
-    { categoryId: cm["Pomodoro & Conserve"], name: "Pomodorino Ciliegino", brand: "", unit: "kg", unitSize: "", packSize: 1, currentStock: 5, minStock: 3, idealStock: 10, location: "Frigo Cucina" },
-    { categoryId: cm["Latticini & Formaggi"], name: "Fior di Latte 200g", brand: "", unit: "pz", unitSize: "200g", packSize: 1, currentStock: 30, minStock: 20, idealStock: 60, location: "Frigo 1" },
-    { categoryId: cm["Latticini & Formaggi"], name: "Mozzarella di Bufala DOP", brand: "", unit: "pz", unitSize: "200g", packSize: 1, currentStock: 15, minStock: 10, idealStock: 30, location: "Frigo 1" },
-    { categoryId: cm["Latticini & Formaggi"], name: "Ricotta Fresca di Pecora", brand: "", unit: "kg", unitSize: "", packSize: 1, currentStock: 3, minStock: 2, idealStock: 6, location: "Frigo 1" },
-    { categoryId: cm["Salumi & Affettati"], name: "Salame Piccante Calabrese", brand: "", unit: "pz", unitSize: "200g", packSize: 1, currentStock: 10, minStock: 6, idealStock: 20, location: "Frigo 2" },
-    { categoryId: cm["Salumi & Affettati"], name: "Prosciutto Cotto Alta Qualità", brand: "", unit: "kg", unitSize: "", packSize: 1, currentStock: 3, minStock: 2, idealStock: 6, location: "Frigo 2" },
-    { categoryId: cm["Salumi & Affettati"], name: "Mortadella IGP", brand: "", unit: "kg", unitSize: "", packSize: 1, currentStock: 2, minStock: 1, idealStock: 4, location: "Frigo 2" },
-    { categoryId: cm["Salumi & Affettati"], name: "'Nduja Calabrese", brand: "", unit: "pz", unitSize: "200g", packSize: 1, currentStock: 8, minStock: 4, idealStock: 15, location: "Frigo 2" },
-    { categoryId: cm["Verdure & Ortaggi"], name: "Basilico Fresco", brand: "", unit: "mazzo", unitSize: "", packSize: 1, currentStock: 5, minStock: 3, idealStock: 10, location: "Frigo Cucina" },
-    { categoryId: cm["Verdure & Ortaggi"], name: "Melanzane", brand: "", unit: "kg", unitSize: "", packSize: 1, currentStock: 6, minStock: 3, idealStock: 10, location: "Dispensa" },
-    { categoryId: cm["Oli & Condimenti"], name: "Olio EVO DOP Sicilia", brand: "", unit: "lt", unitSize: "5lt", packSize: 1, currentStock: 5, minStock: 2, idealStock: 8, location: "Dispensa" },
-    { categoryId: cm["Oli & Condimenti"], name: "Olio di Semi Frittura", brand: "", unit: "lt", unitSize: "5lt", packSize: 1, currentStock: 4, minStock: 2, idealStock: 8, location: "Dispensa" },
-    { categoryId: cm["Oli & Condimenti"], name: "Origano Essiccato", brand: "", unit: "pz", unitSize: "100g", packSize: 1, currentStock: 6, minStock: 3, idealStock: 10, location: "Dispensa" },
-    { categoryId: cm["Pesce & Mare"], name: "Acciughe sott'olio", brand: "Rizzoli", unit: "pz", unitSize: "90g", packSize: 1, currentStock: 8, minStock: 4, idealStock: 15, location: "Dispensa" },
-    { categoryId: cm["Pesce & Mare"], name: "Capperi sotto sale", brand: "Pantelleria", unit: "pz", unitSize: "200g", packSize: 1, currentStock: 6, minStock: 3, idealStock: 10, location: "Dispensa" },
-    { categoryId: cm["Secchi & Dispensa"], name: "Pasta Secca", brand: "De Cecco", unit: "conf", unitSize: "1kg", packSize: 1, currentStock: 10, minStock: 5, idealStock: 20, location: "Dispensa" },
-    { categoryId: cm["Secchi & Dispensa"], name: "Caffè in Grani", brand: "Mokarico", unit: "kg", unitSize: "", packSize: 1, currentStock: 3, minStock: 2, idealStock: 6, location: "Bar" },
-    { categoryId: cm["Secchi & Dispensa"], name: "Zucchero Semolato", brand: "", unit: "sacco", unitSize: "5kg", packSize: 1, currentStock: 2, minStock: 1, idealStock: 3, location: "Dispensa" },
-  ]).run();
+  const initialPassword = process.env.INITIAL_ADMIN_PASSWORD ?? "changeme";
+  db.insert(users).values([{
+    name: "Admin",
+    username: "admin",
+    password: hashPassword(initialPassword),
+    role: "admin",
+    color: "#f97316",
+    active: true,
+    mustChangePassword: true,
+  }]).run();
 }
 
 // ─── Storage Interface ────────────────────────────────────────────────────────
@@ -410,8 +204,27 @@ export const storage: IStorage = {
   getUserByUsername(u) { return db.select().from(users).where(eq(users.username, u)).get(); },
   getUserById(id) { return db.select().from(users).where(eq(users.id, id)).get(); },
   getUsers() { return db.select().from(users).all(); },
-  createUser(d) { return db.insert(users).values(d).returning().get(); },
-  updateUser(id, d) { return db.update(users).set(d).where(eq(users.id, id)).returning().get(); },
+  createUser(d) {
+    // Hasha la password se passata in chiaro
+    const payload = { ...d };
+    if (payload.password && !isHashedPassword(payload.password)) {
+      payload.password = hashPassword(payload.password);
+    }
+    return db.insert(users).values(payload).returning().get();
+  },
+  updateUser(id, d) {
+    const payload: any = { ...d };
+    if (payload.password !== undefined) {
+      if (typeof payload.password !== "string" || payload.password.length === 0) {
+        delete payload.password; // niente cambio password se vuoto
+      } else if (!isHashedPassword(payload.password)) {
+        payload.password = hashPassword(payload.password);
+        // Cambio esplicito della password → annulla l'obbligo di reset
+        if (payload.mustChangePassword === undefined) payload.mustChangePassword = false;
+      }
+    }
+    return db.update(users).set(payload).where(eq(users.id, id)).returning().get();
+  },
   deleteUser(id) { db.delete(users).where(eq(users.id, id)).run(); },
 
   getCategories() { return db.select().from(categories).orderBy(categories.sortOrder).all(); },

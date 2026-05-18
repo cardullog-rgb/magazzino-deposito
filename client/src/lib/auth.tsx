@@ -2,7 +2,15 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { apiRequest } from "./queryClient";
 
 export type UserRole = "admin" | "staff";
-export interface AuthUser { id: number; name: string; username: string; role: UserRole; color: string; active: boolean; }
+export interface AuthUser {
+  id: number;
+  name: string;
+  username: string;
+  role: UserRole;
+  color: string;
+  active: boolean;
+  mustChangePassword?: boolean;
+}
 
 interface Ctx {
   user: AuthUser | null;
@@ -13,6 +21,8 @@ interface Ctx {
   // mostrando username+password admin. Allo scadere torna allo staff senza dover rifare login.
   elevateAdmin(username: string, password: string): Promise<void>;
   endElevation(): void;
+  // Aggiorna l'utente locale dopo un cambio password obbligatorio o un patch del profilo.
+  refreshUser(u: AuthUser): void;
   isAdmin: boolean;
   isElevated: boolean;
   elevationExpiresAt: number | null;
@@ -101,12 +111,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const endElevation = () => endElevationInternal();
 
+  const refreshUser = (u: AuthUser) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    setUser(u);
+    if (baseUser && baseUser.id === u.id) {
+      localStorage.setItem(BASE_KEY, JSON.stringify(u));
+      setBaseUser(u);
+    }
+  };
+
   const isAdmin = user?.role === "admin";
   const isElevated = !!elevationExpiresAt && baseUser?.role !== "admin";
 
   return (
     <AuthContext.Provider value={{
-      user, baseUser, login, logout, elevateAdmin, endElevation,
+      user, baseUser, login, logout, elevateAdmin, endElevation, refreshUser,
       isAdmin, isElevated, elevationExpiresAt,
     }}>
       {children}

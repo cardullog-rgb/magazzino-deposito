@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Moon, Sun, ShieldCheck, KeyRound, Lock } from "lucide-react";
+import { Moon, Sun, ShieldCheck, KeyRound, Lock, ShieldAlert } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 import LoginPage from "@/pages/login";
 import FoglioPage from "@/pages/foglio";
@@ -179,9 +180,79 @@ function AuthenticatedApp() {
   );
 }
 
+function MustChangePasswordGate() {
+  const { user, refreshUser, logout } = useAuth();
+  const { toast } = useToast();
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (pw1.length < 6) {
+      toast({ title: "Password troppo corta", description: "Almeno 6 caratteri.", variant: "destructive" });
+      return;
+    }
+    if (pw1 !== pw2) {
+      toast({ title: "Le password non coincidono", variant: "destructive" });
+      return;
+    }
+    setPending(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/change-password", { newPassword: pw1 });
+      const updated = await res.json();
+      refreshUser(updated);
+      toast({ title: "Password aggiornata", description: "Buon lavoro." });
+    } catch (err: any) {
+      toast({ title: "Errore", description: err.message, variant: "destructive" });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ height: "100dvh" }}>
+      <div className="w-full max-w-sm space-y-4">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="w-5 h-5" style={{ color: "hsl(var(--status-low))" }} />
+          <h1 className="text-base font-semibold">Imposta la tua password</h1>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Ciao {user?.name}. Prima di iniziare devi scegliere una password personale.
+          Almeno 6 caratteri.
+        </p>
+        <form onSubmit={submit} className="space-y-2">
+          <Input
+            type="password"
+            placeholder="nuova password"
+            value={pw1}
+            onChange={(e) => setPw1(e.target.value)}
+            data-testid="input-new-password"
+            autoFocus
+          />
+          <Input
+            type="password"
+            placeholder="ripeti password"
+            value={pw2}
+            onChange={(e) => setPw2(e.target.value)}
+            data-testid="input-new-password-confirm"
+          />
+          <div className="flex items-center gap-2 pt-1">
+            <Button type="submit" disabled={pending || !pw1 || !pw2} className="flex-1" data-testid="button-confirm-password">
+              {pending ? "Salvataggio…" : "Conferma"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={logout}>Esci</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function RootApp() {
   const { user } = useAuth();
   if (!user) return <LoginPage />;
+  if (user.mustChangePassword) return <MustChangePasswordGate />;
   return <AuthenticatedApp />;
 }
 

@@ -71,10 +71,11 @@ export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull(),     // hash scrypt: "scrypt$N$r$p$salt$key"
   role: text("role").notNull().default("staff"), // admin | staff
   color: text("color").notNull().default("#f97316"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
+  mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
