@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { APP_NAME } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +32,7 @@ export default function LoginPage() {
       <div className="w-full max-w-xs">
         <div className="flex items-center gap-2 mb-8 justify-center">
           <Package className="w-5 h-5" style={{ color: "hsl(var(--primary))" }} />
-          <span className="text-sm font-medium tracking-tight">Magazzino · Deposito Bagagli</span>
+          <span className="text-sm font-medium tracking-tight">{APP_NAME}</span>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -75,25 +76,6 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="mt-6 flex gap-2">
-          <button
-            type="button"
-            data-testid="button-quick-admin"
-            onClick={() => { setUsername("admin"); setPassword("admin123"); }}
-            className="flex-1 text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
-          >
-            admin
-          </button>
-          <span className="text-muted-foreground/30 self-center">·</span>
-          <button
-            type="button"
-            data-testid="button-quick-staff"
-            onClick={() => { setUsername("staff"); setPassword("staff123"); }}
-            className="flex-1 text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
-          >
-            staff
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useToast } from "@/hooks/use-toast";
 import { Moon, Sun, ShieldCheck, KeyRound, Lock, ShieldAlert } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { APP_NAME } from "@/lib/brand";
 
 import LoginPage from "@/pages/login";
 import FoglioPage from "@/pages/foglio";
@@ -257,6 +258,9 @@ function RootApp() {
 }
 
 export default function App() {
+  useEffect(() => {
+    document.title = APP_NAME;
+  }, []);
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

@@ -64,7 +64,7 @@ export default function ListaSpesaPage() {
   };
 
   const copyToClipboard = () => {
-    const lines: string[] = [`📦 LISTA ORDINE — Deposito Bagagli\n${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}\n`];
+    const lines: string[] = [`📦 LISTA ORDINE\n${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}\n`];
     let currentSection = "";
     for (const [catId, prods] of Array.from(grouped.entries())) {
       const cat = catMap[catId];

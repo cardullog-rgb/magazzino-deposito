@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Package, ShoppingCart, History, Users, LogOut, ClipboardList, Truck } from "lucide-react";
+import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader,
@@ -49,11 +50,13 @@ export function AppSidebar() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium truncate leading-tight" style={{ color: "hsl(var(--sidebar-foreground))" }}>
-              Deposito Bagagli
+              {APP_NAME}
             </p>
-            <p className="text-[11px] truncate" style={{ color: "hsl(var(--sidebar-foreground) / 0.55)" }}>
-              Magazzino
-            </p>
+            {APP_TAGLINE && (
+              <p className="text-[11px] truncate" style={{ color: "hsl(var(--sidebar-foreground) / 0.55)" }}>
+                {APP_TAGLINE}
+              </p>
+            )}
           </div>
         </div>
       </SidebarHeader>

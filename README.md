@@ -48,6 +48,19 @@ Al primo login l'app obbliga a scegliere una nuova password.
 | `INITIAL_ADMIN_PASSWORD` | `changeme` | Password admin alla prima installazione |
 | `NODE_ENV` | `development` | `production` per build/serve statico |
 
+## Personalizzazione brand
+
+Per cambiare il nome che appare in login / sidebar / titolo del browser,
+modifica `client/src/lib/brand.ts`:
+
+```ts
+export const APP_NAME = "Trattoria Da Mario";   // mostrato ovunque
+export const APP_TAGLINE = "Magazzino";          // riga sotto, opzionale
+```
+
+E aggiorna `<meta name="apple-mobile-web-app-title">` in `client/index.html`
+se installi l'app come PWA sull'iPad.
+
 ## Uso quotidiano (cheat-sheet)
 
 ### Admin (gestore)
