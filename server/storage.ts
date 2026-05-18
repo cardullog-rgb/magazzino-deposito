@@ -137,7 +137,7 @@ if (!uc || uc.c === 0) {
   // Ogni categoria porta la sua macroCategory per raggrupparle nella UI.
   const catDefs = [
     // Bevande – analcolici
-    { name: "Acqua", section: "bevande", macroCategory: "analcolici", icon: "💧", color: "#3b82f6", sortOrder: 1 },
+    { name: "Acqua", section: "bevande", macroCategory: "acqua", icon: "💧", color: "#3b82f6", sortOrder: 1 },
     { name: "Birra & Fusti", section: "bevande", macroCategory: "birre", icon: "🍺", color: "#eab308", sortOrder: 2 },
     { name: "Bibite & Soft Drink", section: "bevande", macroCategory: "analcolici", icon: "🥤", color: "#22c55e", sortOrder: 3 },
     { name: "Succhi", section: "bevande", macroCategory: "analcolici", icon: "🧃", color: "#f97316", sortOrder: 4 },

@@ -66,7 +66,7 @@ export default function ListaSpesaPage() {
   const copyToClipboard = () => {
     const lines: string[] = [`📦 LISTA ORDINE — Deposito Bagagli\n${new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}\n`];
     let currentSection = "";
-    for (const [catId, prods] of grouped) {
+    for (const [catId, prods] of Array.from(grouped.entries())) {
       const cat = catMap[catId];
       const section = cat?.section ?? "";
       if (section !== currentSection) {
@@ -156,7 +156,7 @@ export default function ListaSpesaPage() {
         {/* Sezione Bevande */}
         {(["bevande", "cucina"] as const).map(section => {
           const sectionCats = categories.filter(c => c.section === section);
-          const sectionEntries = [...grouped.entries()].filter(([catId]) =>
+          const sectionEntries = Array.from(grouped.entries()).filter(([catId]) =>
             sectionCats.some(c => c.id === catId)
           );
           if (sectionEntries.length === 0) return null;

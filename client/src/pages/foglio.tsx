@@ -14,12 +14,15 @@ type CurrentSheet = { sheet: Sheet; rows: EnrichedRow[] };
 
 const MACRO_LABELS: Record<string, string> = {
   all: "Tutti",
+  acqua: "Acqua",
   analcolici: "Analcolici",
   birre: "Birre",
-  alcolici: "Alcolici",
   vini: "Vini",
+  alcolici: "Alcolici",
   cucina: "Cucina",
 };
+// Ordine fisso di apparizione delle macro nei pulsanti filtro
+const MACRO_ORDER = ["all", "acqua", "analcolici", "birre", "vini", "alcolici", "cucina"];
 
 const STATUS = (row: EnrichedRow): "ok" | "low" | "out" => {
   const stock = row.finalCalculated;
@@ -82,7 +85,11 @@ export default function FoglioPage() {
   const macroCategories = useMemo(() => {
     if (!data) return ["all"];
     const set = new Set<string>(data.rows.map(r => r.category.macroCategory || "altro"));
-    return ["all", ...Array.from(set).filter(Boolean)];
+    set.add("all");
+    // Ordine fisso prima, eventuali macro extra (es. "altro") in coda
+    const ordered = MACRO_ORDER.filter(m => set.has(m));
+    const extras = Array.from(set).filter(m => !MACRO_ORDER.includes(m)).sort();
+    return [...ordered, ...extras];
   }, [data]);
 
   const filteredRows = useMemo(() => {
