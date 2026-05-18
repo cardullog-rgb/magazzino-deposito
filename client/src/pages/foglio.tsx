@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, Plus, Minus, X, AlertTriangle, CheckCircle2, Undo2, ArrowDownCircle, Clock } from "lucide-react";
+import { Search, Plus, Minus, X, AlertTriangle, CheckCircle2, Undo2, ArrowDownCircle, Clock, Truck, ShoppingCart } from "lucide-react";
 import type { Product, Category, Sheet, SheetRow, Movement } from "@shared/schema";
 
 type EnrichedRow = SheetRow & { product: Product; category: Category };
@@ -307,16 +308,42 @@ export default function FoglioPage() {
           </p>
         </div>
         {isAdmin && sheet.status === "open" && (
-          <Button
-            onClick={() => setConfirmClose(true)}
-            variant="outline"
-            size="sm"
-            data-testid="button-close-sheet"
-          >
-            Chiudi settimana
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/carico">
+              <Button size="sm" data-testid="button-carico">
+                <Truck className="w-4 h-4 mr-1.5" />
+                Carico merce
+              </Button>
+            </Link>
+            <Button
+              onClick={() => setConfirmClose(true)}
+              variant="outline"
+              size="sm"
+              data-testid="button-close-sheet"
+            >
+              Chiudi settimana
+            </Button>
+          </div>
         )}
       </div>
+
+      {/* ─── BANNER DA RIORDINARE ────────────────────────────────────────── */}
+      {alertsCount > 0 && (
+        <Link
+          href="/lista-spesa"
+          className="px-4 sm:px-5 py-2 border-b shrink-0 flex items-center gap-2.5 hover:bg-muted/30 transition-colors"
+          style={{ background: "hsl(var(--status-low) / 0.08)" }}
+          data-testid="banner-da-riordinare"
+        >
+          <ShoppingCart className="w-4 h-4" style={{ color: "hsl(var(--status-low))" }} />
+          <span className="text-sm">
+            <span className="font-medium" style={{ color: "hsl(var(--status-low))" }}>
+              {alertsCount} {alertsCount === 1 ? "prodotto" : "prodotti"} da riordinare
+            </span>
+            <span className="text-muted-foreground"> · tocca per vedere la lista</span>
+          </span>
+        </Link>
+      )}
 
       {/* ─── USCITE DI OGGI (cronologia) ─────────────────────────────────── */}
       {todayScarichi.length > 0 && (

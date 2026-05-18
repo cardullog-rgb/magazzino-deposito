@@ -1,42 +1,32 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Package, ShoppingCart, History, Users, LogOut, ClipboardList, Truck } from "lucide-react";
+import { Package, History, Users, LogOut, ClipboardList, ChevronUp } from "lucide-react";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader,
 } from "@/components/ui/sidebar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/lib/auth";
-import { useQuery } from "@tanstack/react-query";
-import type { Product } from "@shared/schema";
 
-// Voci sempre visibili (anche allo staff sull'iPad)
-const navItemsAll = [
-  { title: "Inventario",         href: "/",            icon: ClipboardList },
-  { title: "Lista spesa",        href: "/lista-spesa", icon: ShoppingCart },
+// Voci viste dallo staff (iPad)
+const navItemsStaff = [
+  { title: "Inventario", href: "/", icon: ClipboardList },
 ];
 
-// Voci ad accesso admin (o staff con elevazione attiva)
+// Voci viste dall'admin: massimo 3 + menu utente in footer
 const navItemsAdmin = [
-  { title: "Carico",             href: "/carico",      icon: Truck },
-  { title: "Dashboard",          href: "/dashboard",   icon: LayoutDashboard },
-  { title: "Scorte",             href: "/scorte",      icon: Package },
-  { title: "Storico",            href: "/storico",     icon: History },
-];
-
-const adminItems = [
-  { title: "Utenti", href: "/utenti", icon: Users },
+  { title: "Inventario", href: "/",        icon: ClipboardList },
+  { title: "Catalogo",   href: "/scorte",  icon: Package },
+  { title: "Storico",    href: "/storico", icon: History },
 ];
 
 export function AppSidebar() {
   const { user, logout, isAdmin } = useAuth();
   const [location] = useLocation();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  const { data: products = [] } = useQuery<Product[]>({
-    queryKey: ["/api/products"], refetchInterval: 15000,
-  });
-
-  const alertCount = products.filter(p => p.active && p.currentStock <= p.minStock).length;
-  const navItems = isAdmin ? [navItemsAll[0], ...navItemsAdmin, navItemsAll[1]] : navItemsAll;
+  const navItems = isAdmin ? navItemsAdmin : navItemsStaff;
 
   return (
     <Sidebar>
@@ -66,27 +56,16 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map(item => {
-                const isActive = location === item.href;
-                const showBadge = item.href === "/lista-spesa" && alertCount > 0;
+                // Per "Inventario" considero attive sia "/" sia "/foglio" sia "/banco"
+                const isActive = item.href === "/"
+                  ? (location === "/" || location === "/foglio" || location === "/banco")
+                  : location === item.href || location.startsWith(item.href + "/");
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={isActive}>
-                      <Link href={item.href} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <item.icon className="w-4 h-4" />
-                          <span className="text-sm">{item.title}</span>
-                        </div>
-                        {showBadge && (
-                          <span
-                            className="h-5 min-w-5 px-1.5 text-[11px] tabular-nums flex items-center justify-center font-medium"
-                            style={{
-                              background: "hsl(var(--primary))",
-                              color: "hsl(var(--primary-foreground))",
-                            }}
-                          >
-                            {alertCount}
-                          </span>
-                        )}
+                      <Link href={item.href} className="flex items-center gap-2.5">
+                        <item.icon className="w-4 h-4" />
+                        <span className="text-sm">{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -95,55 +74,54 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminItems.map(item => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={location === item.href}>
-                      <Link href={item.href} className="flex items-center gap-2.5">
-                        <item.icon className="w-4 h-4" />
-                        <span className="text-sm">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t p-3">
-        <div className="flex items-center gap-2.5 px-1">
-          <div
-            className="h-7 w-7 flex items-center justify-center flex-shrink-0 text-[11px] font-medium text-white"
-            style={{ background: user?.color ?? "hsl(var(--primary))" }}
-          >
-            {user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium truncate leading-tight" style={{ color: "hsl(var(--sidebar-foreground))" }}>
-              {user?.name}
-            </p>
-            <p className="text-[11px] capitalize truncate" style={{ color: "hsl(var(--sidebar-foreground) / 0.55)" }}>
-              {user?.role}
-            </p>
-          </div>
-          <button
-            onClick={logout}
-            data-testid="button-logout"
-            title="Esci"
-            className="p-1.5 transition-colors"
-            style={{ color: "hsl(var(--sidebar-foreground) / 0.55)" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "hsl(var(--sidebar-foreground))")}
-            onMouseLeave={e => (e.currentTarget.style.color = "hsl(var(--sidebar-foreground) / 0.55)")}
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
+        <Popover open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+          <PopoverTrigger asChild>
+            <button
+              data-testid="button-user-menu"
+              className="flex items-center gap-2.5 px-1 py-1 w-full hover:bg-secondary/50 rounded-md transition-colors"
+            >
+              <div
+                className="h-7 w-7 flex items-center justify-center flex-shrink-0 text-[11px] font-medium text-white rounded"
+                style={{ background: user?.color ?? "hsl(var(--primary))" }}
+              >
+                {user?.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-[13px] font-medium truncate leading-tight" style={{ color: "hsl(var(--sidebar-foreground))" }}>
+                  {user?.name}
+                </p>
+                <p className="text-[11px] capitalize truncate" style={{ color: "hsl(var(--sidebar-foreground) / 0.55)" }}>
+                  {user?.role}
+                </p>
+              </div>
+              <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-56 p-1">
+            {isAdmin && (
+              <Link
+                href="/utenti"
+                onClick={() => setUserMenuOpen(false)}
+                className="flex items-center gap-2.5 px-2 py-2 text-sm rounded hover:bg-secondary transition-colors"
+                data-testid="link-utenti"
+              >
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <span>Utenti</span>
+              </Link>
+            )}
+            <button
+              onClick={() => { setUserMenuOpen(false); logout(); }}
+              data-testid="button-logout"
+              className="flex items-center gap-2.5 px-2 py-2 text-sm rounded hover:bg-secondary transition-colors w-full text-left"
+            >
+              <LogOut className="w-4 h-4 text-muted-foreground" />
+              <span>Esci</span>
+            </button>
+          </PopoverContent>
+        </Popover>
       </SidebarFooter>
     </Sidebar>
   );
