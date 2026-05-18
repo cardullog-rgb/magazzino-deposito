@@ -67,6 +67,18 @@ export function registerRoutes(httpServer: Server, app: Express): void {
     res.json(safe);
   });
 
+  // Quick-login dell'iPad dietro bancone: entra come utente "ipad" senza
+  // password. Inteso per uso interno su rete LAN. L'admin può disabilitare
+  // l'utente "ipad" dalla pagina Utenti per chiudere questa porta.
+  app.post("/api/auth/quick-login-ipad", loginLimiter, (_req, res) => {
+    const user = storage.getUserByUsername("ipad");
+    if (!user || !user.active || user.role !== "staff") {
+      return res.status(404).json({ error: "Utente iPad non disponibile" });
+    }
+    const { password: _, ...safe } = user;
+    res.json(safe);
+  });
+
   // Cambio password (anche obbligatorio al primo login).
   app.post("/api/auth/change-password", requireAuth, (req: AuthedRequest, res) => {
     const { currentPassword, newPassword } = req.body ?? {};

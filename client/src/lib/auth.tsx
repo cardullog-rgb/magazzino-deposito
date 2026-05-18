@@ -16,6 +16,8 @@ interface Ctx {
   user: AuthUser | null;
   baseUser: AuthUser | null;       // utente loggato originariamente (mai cambia fino al logout)
   login(u: string, p: string): Promise<void>;
+  // Login automatico dell'iPad dietro bancone (utente fisso "ipad", senza password).
+  quickLoginIpad(): Promise<void>;
   logout(): void;
   // Elevazione admin temporanea: il dipendente passa "in modalità admin" per ELEVATION_MS
   // mostrando username+password admin. Allo scadere torna allo staff senza dover rifare login.
@@ -87,6 +89,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setElevationExpiresAt(null);
   };
 
+  const quickLoginIpad = async () => {
+    const res = await apiRequest("POST", "/api/auth/quick-login-ipad", {});
+    const u = await res.json();
+    if (u.error) throw new Error(u.error);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    localStorage.setItem(BASE_KEY, JSON.stringify(u));
+    localStorage.removeItem(ELEV_KEY);
+    setUser(u);
+    setBaseUser(u);
+    setElevationExpiresAt(null);
+  };
+
   const logout = () => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(BASE_KEY);
@@ -125,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, baseUser, login, logout, elevateAdmin, endElevation, refreshUser,
+      user, baseUser, login, quickLoginIpad, logout, elevateAdmin, endElevation, refreshUser,
       isAdmin, isElevated, elevationExpiresAt,
     }}>
       {children}

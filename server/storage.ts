@@ -149,15 +149,28 @@ function formatWeekName(start: number, end: number): string {
 const uc = db.select({ c: sql<number>`count(*)` }).from(users).get();
 if (!uc || uc.c === 0) {
   const initialPassword = process.env.INITIAL_ADMIN_PASSWORD ?? "changeme";
-  db.insert(users).values([{
-    name: "Admin",
-    username: "admin",
-    password: hashPassword(initialPassword),
-    role: "admin",
-    color: "#f97316",
-    active: true,
-    mustChangePassword: true,
-  }]).run();
+  db.insert(users).values([
+    {
+      name: "Admin",
+      username: "admin",
+      password: hashPassword(initialPassword),
+      role: "admin",
+      color: "#f97316",
+      active: true,
+      mustChangePassword: true,
+    },
+    {
+      // Utente "iPad dietro bancone": uno solo, condiviso, usato dallo staff
+      // per scarico/carico veloce. Login senza password (quick-login).
+      name: "iPad",
+      username: "ipad",
+      password: hashPassword("ipad"), // valore segnaposto; il login passa per /api/auth/quick-login-ipad
+      role: "staff",
+      color: "#3b82f6",
+      active: true,
+      mustChangePassword: false,
+    },
+  ]).run();
 }
 
 // ─── Storage Interface ────────────────────────────────────────────────────────

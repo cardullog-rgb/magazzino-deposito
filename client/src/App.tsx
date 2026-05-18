@@ -18,6 +18,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { APP_NAME } from "@/lib/brand";
 
 import LoginPage from "@/pages/login";
+import BancoPage from "@/pages/banco";
 import FoglioPage from "@/pages/foglio";
 import DashboardPage from "@/pages/dashboard";
 import ScortePage from "@/pages/scorte";
@@ -164,7 +165,9 @@ function AuthenticatedApp() {
             </header>
             <main className="flex-1 overflow-hidden">
               <Switch>
-                <Route path="/" component={FoglioPage} />
+                <Route path="/" component={isAdmin ? FoglioPage : BancoPage} />
+                {isAdmin && <Route path="/banco" component={BancoPage} />}
+                {isAdmin && <Route path="/foglio" component={FoglioPage} />}
                 {isAdmin && <Route path="/dashboard" component={DashboardPage} />}
                 {isAdmin && <Route path="/scorte" component={ScortePage} />}
                 <Route path="/lista-spesa" component={ListaSpesaPage} />
