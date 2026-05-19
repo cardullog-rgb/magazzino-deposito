@@ -315,6 +315,157 @@ main.content { background: var(--bg); }
 }
 
 /* ============================================================
+   View switch (Card / Lista totale nella vista Prodotti)
+   ============================================================ */
+.view-switch {
+  display: inline-flex;
+  background: var(--bg-warm);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  margin-right: 8px;
+}
+.view-switch .vs-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  min-height: 36px;
+}
+.view-switch .vs-btn:hover { color: var(--text); }
+.view-switch .vs-btn.active {
+  background: var(--bg-elev-2);
+  color: var(--accent);
+}
+
+/* ============================================================
+   Storico per sessioni (card espandibili)
+   ============================================================ */
+.session-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.2s;
+}
+.session-card:hover { border-color: var(--line-strong); }
+.session-card.open { border-color: var(--accent-soft); box-shadow: var(--shadow-card); }
+.session-card.current { border-left: 3px solid var(--accent); }
+
+.session-head {
+  width: 100%;
+  background: transparent;
+  border: none;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-family: var(--font-body);
+  transition: background 0.15s;
+}
+.session-head:hover { background: var(--bg-elev-2); }
+
+.session-chev {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--text-dim);
+  width: 18px;
+  text-align: center;
+}
+
+.session-title { min-width: 0; }
+.session-date {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 17px;
+  color: var(--paper);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-pill {
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+}
+.session-sub {
+  font-size: 12px;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+}
+
+.session-stats {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.session-stats .ss {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 700;
+}
+.session-stats .ss em {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-mute);
+}
+.session-stats .ss.out { color: var(--terra); }
+.session-stats .ss.in  { color: var(--sage); }
+.session-stats .ss.warn { color: var(--gold); }
+.session-stats .ss.neutral { color: var(--text-dim); font-weight: 500; }
+
+.session-body {
+  padding: 0 18px 18px;
+  border-top: 1px dashed var(--line);
+  animation: fade 0.18s ease;
+}
+
+@media (max-width: 760px) {
+  .session-head {
+    grid-template-columns: auto 1fr;
+    row-gap: 8px;
+  }
+  .session-stats {
+    grid-column: 1 / -1;
+    justify-self: start;
+    gap: 10px;
+    padding-left: 32px;
+  }
+  .session-stats .ss { font-size: 13px; }
+}
+
+/* ============================================================
    Topbar
    ============================================================ */
 header.topbar {

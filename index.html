@@ -82,8 +82,8 @@
     <div class="rail-section">Categorie</div>
     <template x-for="cat in categories" :key="cat.id">
       <button class="rail-item"
-              :class="{ active: view === 'products' && cat.id === activeCategory }"
-              @click="view = 'products'; activeCategory = cat.id">
+              :class="{ active: view === 'products' && productView === 'cards' && cat.id === activeCategory }"
+              @click="view = 'products'; productView = 'cards'; activeCategory = cat.id">
         <span class="ico" x-text="cat.icon"></span>
         <span class="lbl" x-text="cat.name"></span>
         <template x-if="countLowByCategory[cat.id] > 0">
@@ -149,136 +149,220 @@
     <!-- ====== VISTA: PRODOTTI ====== -->
     <template x-if="view === 'products'">
       <div>
-        <div class="section-title">
-          <h2>
-            <span x-text="activeCategoryObj?.icon"></span>
-            <em x-text="activeCategoryObj?.name"></em>
-          </h2>
-          <span class="meta">
-            <span x-text="visibleProducts.length"></span>
-            <span x-text="visibleProducts.length === 1 ? 'prodotto' : 'prodotti'"></span>
-          </span>
-          <div class="rule"></div>
-          <template x-if="visibleLowCount > 0">
-            <span class="alert-tag">⚠ <span x-text="visibleLowCount"></span> sotto soglia</span>
-          </template>
-        </div>
-
-        <div class="toolbar" style="padding:0 26px 14px;">
+        <!-- Toolbar superiore: switch Card/Lista + azioni -->
+        <div class="toolbar" style="padding:18px 26px 8px;">
+          <div class="view-switch">
+            <button class="vs-btn" :class="{ active: productView === 'cards' }" @click="productView = 'cards'">📦 Card</button>
+            <button class="vs-btn" :class="{ active: productView === 'list' }" @click="productView = 'list'">📋 Lista totale</button>
+          </div>
           <button class="btn primary" @click="openNewProduct()">+ Nuovo prodotto</button>
           <button class="btn" @click="openCategoryManager()">✏ Gestisci categorie</button>
         </div>
 
-        <template x-if="countLow > 0 && countLow > visibleLowCount">
-          <div class="urgent-bar">
-            <span class="sym">!!</span>
-            <span class="lbl">Altri prodotti urgenti in altre categorie</span>
-            <span class="ct" x-text="(countLow - visibleLowCount) + ' alert'"></span>
-            <a class="more" @click="jumpToFirstLow()">vedi →</a>
+        <!-- === MODALITÀ CARD: griglia per categoria === -->
+        <template x-if="productView === 'cards'">
+          <div>
+            <div class="section-title">
+              <h2>
+                <span x-text="activeCategoryObj?.icon"></span>
+                <em x-text="activeCategoryObj?.name"></em>
+              </h2>
+              <span class="meta">
+                <span x-text="visibleProducts.length"></span>
+                <span x-text="visibleProducts.length === 1 ? 'prodotto' : 'prodotti'"></span>
+              </span>
+              <div class="rule"></div>
+              <template x-if="visibleLowCount > 0">
+                <span class="alert-tag">⚠ <span x-text="visibleLowCount"></span> sotto soglia</span>
+              </template>
+            </div>
+
+            <template x-if="countLow > 0 && countLow > visibleLowCount">
+              <div class="urgent-bar">
+                <span class="sym">!!</span>
+                <span class="lbl">Altri prodotti urgenti in altre categorie</span>
+                <span class="ct" x-text="(countLow - visibleLowCount) + ' alert'"></span>
+                <a class="more" @click="jumpToFirstLow()">vedi →</a>
+              </div>
+            </template>
+
+            <template x-if="visibleProducts.length === 0">
+              <div class="empty">— nessun prodotto in questa categoria —</div>
+            </template>
+            <div class="grid" x-show="visibleProducts.length > 0">
+              <template x-for="(prod, i) in visibleProducts" :key="prod.id">
+                <div class="card"
+                     :class="{ low: isLow(prod), 'pulse-minus': pulseState[prod.id] === 'minus', 'pulse-plus': pulseState[prod.id] === 'plus' }"
+                     :style="`--reveal-delay: ${Math.min(i, 24) * 25}ms`">
+                  <template x-if="isLow(prod)"><div class="card-warn">!</div></template>
+
+                  <button class="card-edit" @click.stop="openEditProduct(prod)" title="Modifica prodotto">✎</button>
+
+                  <div class="card-info" @click="openQty(prod, 'out')">
+                    <div class="card-cat" x-text="categoryById(prod.category)?.name"></div>
+                    <div class="card-name" x-text="prod.name"></div>
+                    <template x-if="adminUnlocked && (prod.costPrice > 0 || prod.salePrice > 0)">
+                      <div class="card-prices">
+                        <span><em>cost.</em> <span x-text="formatPrice(prod.costPrice)"></span></span>
+                        <span><em>vend.</em> <span x-text="formatPrice(prod.salePrice)"></span></span>
+                      </div>
+                    </template>
+                    <div class="card-stock-area">
+                      <span class="card-stock"
+                            :class="{ low: isLow(prod), zero: prod.currentStock <= 0 }"
+                            x-text="prod.currentStock"></span>
+                      <span class="card-unit" x-text="prod.unit"></span>
+                    </div>
+                  </div>
+
+                  <div class="card-actions">
+                    <button class="card-act minus" @click="openQty(prod, 'out')" :disabled="prod.currentStock <= 0">
+                      <span class="sym">−</span>
+                      <small>uscita</small>
+                    </button>
+                    <button class="card-act plus" @click="openQty(prod, 'in')">
+                      <span class="sym">+</span>
+                      <small>ingresso</small>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
           </div>
         </template>
 
-        <template x-if="visibleProducts.length === 0">
-          <div class="empty">— nessun prodotto in questa categoria —</div>
-        </template>
-        <div class="grid" x-show="visibleProducts.length > 0">
-          <template x-for="(prod, i) in visibleProducts" :key="prod.id">
-            <div class="card"
-                 :class="{ low: isLow(prod), 'pulse-minus': pulseState[prod.id] === 'minus', 'pulse-plus': pulseState[prod.id] === 'plus' }"
-                 :style="`--reveal-delay: ${Math.min(i, 24) * 25}ms`">
-              <template x-if="isLow(prod)"><div class="card-warn">!</div></template>
-
-              <button class="card-edit" @click.stop="openEditProduct(prod)" title="Modifica prodotto">✎</button>
-
-              <div class="card-info" @click="openQty(prod, 'out')">
-                <div class="card-cat" x-text="categoryById(prod.category)?.name"></div>
-                <div class="card-name" x-text="prod.name"></div>
-                <template x-if="adminUnlocked && (prod.costPrice > 0 || prod.salePrice > 0)">
-                  <div class="card-prices">
-                    <span><em>cost.</em> <span x-text="formatPrice(prod.costPrice)"></span></span>
-                    <span><em>vend.</em> <span x-text="formatPrice(prod.salePrice)"></span></span>
+        <!-- === MODALITÀ LISTA TOTALE: tutti i prodotti raggruppati per categoria === -->
+        <template x-if="productView === 'list'">
+          <div style="padding: 6px 24px 100px;">
+            <template x-if="inventoryList.length === 0">
+              <div class="empty">Nessun prodotto in inventario.</div>
+            </template>
+            <template x-for="g in inventoryList" :key="g.category.id">
+              <div class="section">
+                <h2 style="margin: 18px 0 10px; display:flex; align-items:baseline; gap:10px;">
+                  <span x-text="g.category.icon"></span>
+                  <em x-text="g.category.name"></em>
+                  <span class="muted" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.5px;">
+                    <span x-text="g.rows.length"></span> ·
+                    <span x-text="g.rows.filter(r => isLow(r)).length"></span> sotto soglia
+                  </span>
+                </h2>
+                <div class="row-list">
+                  <div class="row head" style="grid-template-columns: 2.5fr 1fr 1fr auto;">
+                    <div>Prodotto</div>
+                    <div>Scorta</div>
+                    <div class="col-hide-sm">Soglia</div>
+                    <div></div>
                   </div>
-                </template>
-                <div class="card-stock-area">
-                  <span class="card-stock"
-                        :class="{ low: isLow(prod), zero: prod.currentStock <= 0 }"
-                        x-text="prod.currentStock"></span>
-                  <span class="card-unit" x-text="prod.unit"></span>
+                  <template x-for="prod in g.rows" :key="prod.id">
+                    <div class="row" :class="{ danger: isLow(prod) }" style="grid-template-columns: 2.5fr 1fr 1fr auto;">
+                      <div class="name">
+                        <span x-text="prod.name"></span>
+                        <template x-if="isLow(prod)"><span class="alert-tag" style="font-size:10px;padding:1px 7px;margin-left:8px;">⚠</span></template>
+                      </div>
+                      <div :style="isLow(prod) ? 'color:var(--terra);font-weight:700' : 'font-weight:600'">
+                        <span x-text="prod.currentStock"></span>
+                        <span class="muted" style="font-size:11px" x-text="' ' + prod.unit"></span>
+                      </div>
+                      <div class="muted col-hide-sm" x-text="prod.minThreshold"></div>
+                      <div>
+                        <button class="btn small" @click="openEditProduct(prod)" title="Modifica">✎</button>
+                        <button class="btn small danger" @click="openQty(prod, 'out')" :disabled="prod.currentStock <= 0" title="Uscita">−</button>
+                        <button class="btn small ok" @click="openQty(prod, 'in')" title="Ingresso">+</button>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </div>
-
-              <div class="card-actions">
-                <button class="card-act minus" @click="openQty(prod, 'out')" :disabled="prod.currentStock <= 0">
-                  <span class="sym">−</span>
-                  <small>uscita</small>
-                </button>
-                <button class="card-act plus" @click="openQty(prod, 'in')">
-                  <span class="sym">+</span>
-                  <small>ingresso</small>
-                </button>
-              </div>
-            </div>
-          </template>
-        </div>
+            </template>
+          </div>
+        </template>
       </div>
     </template>
 
-    <!-- ====== VISTA: STORICO ====== -->
+    <!-- ====== VISTA: STORICO (per sessioni di chiusura) ====== -->
     <template x-if="view === 'storico'">
       <div style="padding: 22px 24px 80px;">
         <div class="section-title" style="padding:0 0 14px;">
-          <h2><span>📅</span> <em>Storico movimenti</em></h2>
+          <h2><span>📅</span> <em>Storico per chiusure</em></h2>
           <span class="meta">
-            <span x-text="filteredMovements.length"></span>
-            <span x-text="filteredMovements.length === 1 ? 'movimento' : 'movimenti'"></span>
+            <span x-text="historySessions.length"></span>
+            <span x-text="historySessions.length === 1 ? 'sessione' : 'sessioni'"></span>
           </span>
           <div class="rule"></div>
         </div>
+        <p class="muted" style="padding:0 4px 14px">Ogni voce è una sessione tra due chiusure di giornata. Tap per espandere e vedere i movimenti.</p>
 
-        <div class="cat-pills">
-          <button class="cat-pill" :class="{ active: movementFilter.days === 1 }"    @click="movementFilter.days = 1">Oggi</button>
-          <button class="cat-pill" :class="{ active: movementFilter.days === 7 }"    @click="movementFilter.days = 7">7 giorni</button>
-          <button class="cat-pill" :class="{ active: movementFilter.days === 30 }"   @click="movementFilter.days = 30">30 giorni</button>
-          <button class="cat-pill" :class="{ active: movementFilter.days === 90 }"   @click="movementFilter.days = 90">90 giorni</button>
-          <button class="cat-pill" :class="{ active: movementFilter.days === 3650 }" @click="movementFilter.days = 3650">Tutto</button>
-        </div>
         <div class="toolbar">
-          <select x-model="movementFilter.productId">
+          <select x-model="historyProductFilter">
             <option value="">Tutti i prodotti</option>
             <template x-for="p in allActiveProducts" :key="p.id">
               <option :value="p.id" x-text="p.name"></option>
             </template>
           </select>
-          <button class="btn" @click="exportMovementsCsv()">⬇ Esporta CSV</button>
+          <button class="btn" @click="exportMovementsCsv()">⬇ Esporta tutto CSV</button>
         </div>
 
-        <div class="row-list">
-          <div class="row head" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr 1fr auto;">
-            <div>Data</div>
-            <div>Prodotto</div>
-            <div>Tipo</div>
-            <div>Prima</div>
-            <div>Cambio</div>
-            <div>Dopo</div>
-            <div></div>
+        <template x-if="historySessions.length === 0">
+          <div class="empty">Nessuna sessione registrata.</div>
+        </template>
+
+        <template x-for="s in historySessions" :key="s.id">
+          <div class="session-card" :class="{ open: expandedSessions[s.id], current: s.isCurrent }">
+            <button class="session-head" @click="toggleSession(s.id)">
+              <span class="session-chev" x-text="expandedSessions[s.id] ? '▾' : '▸'"></span>
+              <div class="session-title">
+                <div class="session-date">
+                  <template x-if="s.isCurrent"><span class="session-pill">in corso</span></template>
+                  <span x-text="s.label"></span>
+                </div>
+                <div class="session-sub muted" x-text="s.sublabel"></div>
+              </div>
+              <div class="session-stats">
+                <span class="ss out"><em>↓</em><span x-text="s.out"></span></span>
+                <span class="ss in"><em>↑</em><span x-text="s.in"></span></span>
+                <span class="ss neutral"><em>mov.</em><span x-text="s.movementCount"></span></span>
+                <template x-if="s.lowCount != null && s.lowCount > 0">
+                  <span class="ss warn"><em>⚠</em><span x-text="s.lowCount"></span></span>
+                </template>
+              </div>
+            </button>
+
+            <template x-if="expandedSessions[s.id]">
+              <div class="session-body">
+                <template x-if="s.movements.length === 0">
+                  <div class="empty" style="padding:24px">Nessun movimento in questa sessione.</div>
+                </template>
+                <template x-if="s.movements.length > 0">
+                  <div class="row-list">
+                    <div class="row head" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr 1fr auto;">
+                      <div>Data</div>
+                      <div>Prodotto</div>
+                      <div>Tipo</div>
+                      <div>Prima</div>
+                      <div>Cambio</div>
+                      <div>Dopo</div>
+                      <div></div>
+                    </div>
+                    <template x-for="mv in s.movements" :key="mv.id">
+                      <div class="row" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr 1fr auto;">
+                        <div class="muted" x-text="formatTimestamp(mv.timestamp)"></div>
+                        <div class="name" x-text="mv.productName"></div>
+                        <div :class="{ danger: mv.type === 'out', ok: mv.type === 'in' }"
+                             x-text="mv.type === 'out' ? '↓ uscita' : mv.type === 'in' ? '↑ ingresso' : '✎ rettifica'"></div>
+                        <div class="muted" x-text="(mv.stockAfter - mv.delta)"></div>
+                        <div :style="mv.delta >= 0 ? 'color:var(--sage);font-weight:700' : 'color:var(--terra);font-weight:700'"
+                             x-text="(mv.delta >= 0 ? '+' : '') + mv.delta"></div>
+                        <div style="font-weight:700" x-text="mv.stockAfter"></div>
+                        <div><button class="btn small danger" @click="deleteMovement(mv)">Annulla</button></div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
-          <template x-for="mv in filteredMovements" :key="mv.id">
-            <div class="row" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr 1fr auto;">
-              <div class="muted" x-text="formatTimestamp(mv.timestamp)"></div>
-              <div class="name" x-text="mv.productName"></div>
-              <div :class="{ danger: mv.type === 'out', ok: mv.type === 'in' }"
-                   x-text="mv.type === 'out' ? '↓ uscita' : mv.type === 'in' ? '↑ ingresso' : '✎ rettifica'"></div>
-              <div class="muted" x-text="(mv.stockAfter - mv.delta)"></div>
-              <div :style="mv.delta >= 0 ? 'color:var(--sage);font-weight:700' : 'color:var(--terra);font-weight:700'"
-                   x-text="(mv.delta >= 0 ? '+' : '') + mv.delta"></div>
-              <div style="font-weight:700" x-text="mv.stockAfter"></div>
-              <div><button class="btn small danger" @click="deleteMovement(mv)">Annulla</button></div>
-            </div>
-          </template>
-          <template x-if="filteredMovements.length === 0">
-            <div class="empty">Nessun movimento nel periodo selezionato.</div>
-          </template>
-        </div>
+        </template>
       </div>
     </template>
 

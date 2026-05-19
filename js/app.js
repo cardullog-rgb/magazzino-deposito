@@ -54,6 +54,7 @@ export function initApp() {
 
     // Vista corrente
     view: 'products', // 'products' | 'storico' | 'avvisi' | 'fornitori' | 'impostazioni'
+    productView: 'cards', // 'cards' | 'list' (toggle dentro la vista Prodotti)
     activeCategory: 'acque',
 
     theme: 'dark',
@@ -62,6 +63,8 @@ export function initApp() {
     lastCloseSummary: null,
     closeConfirmOpen: false,
     dayStartedAt: 0,
+    dailyCloses: [],
+    expandedSessions: {},
 
     categories: [],
     products: [],
@@ -113,8 +116,8 @@ export function initApp() {
       form: { id: '', name: '', icon: '' },
     },
 
-    // Filtri movimenti
-    movementFilter: { productId: '', days: 7 },
+    // Filtro storico per prodotto (lo applico cross-sessione)
+    historyProductFilter: '',
 
     // ====== Init ======
     async init() {
@@ -124,6 +127,7 @@ export function initApp() {
       this.inactivityTimeoutMs = await getSetting('inactivityTimeoutMs', 120000);
       await this.reloadAll();
       await this._loadDayCloseState();
+      this.expandedSessions = { current: true };
       const pinExists = await hasPin();
       if (!pinExists) {
         this.setupMode = true;
@@ -159,6 +163,8 @@ export function initApp() {
       const advancedPast = todayClose && this.dayStartedAt > todayClose.closedAt;
       this.dayClosed = !!todayClose && !advancedPast;
       this.lastCloseSummary = todayClose || null;
+      this.dailyCloses = (await getAll('dailyCloses'))
+        .sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0));
 
       const lastSeen = await getSetting('lastSeenDate', null);
       if (lastSeen && lastSeen !== today && !this.dayClosed) {
@@ -575,16 +581,76 @@ export function initApp() {
       };
     },
 
-    // ====== Movimenti ======
-    get filteredMovements() {
-      const { productId, days } = this.movementFilter;
-      const cutoff = Date.now() - days * DAY_MS;
-      return this.movements.filter((m) => {
-        if (m.timestamp < cutoff) return false;
-        if (productId && m.productId !== productId) return false;
-        return true;
+    // ====== Storico per sessioni ======
+    // Una sessione = periodo tra due chiusure giornata.
+    // Sessione "corrente" = dall'ultima chiusura ad ora (se la giornata non è chiusa).
+    get historySessions() {
+      const closes = this.dailyCloses; // già ordinati DESC per closedAt
+      const filterPid = this.historyProductFilter;
+      const inFilter = (m) => !filterPid || m.productId === filterPid;
+
+      const sessions = [];
+      const lastCloseAt = closes[0]?.closedAt || 0;
+
+      // Sessione corrente (solo se la giornata non è chiusa)
+      if (!this.dayClosed) {
+        const start = lastCloseAt;
+        const movs = this.movements
+          .filter((m) => m.timestamp > start && inFilter(m));
+        let out = 0, inn = 0;
+        for (const m of movs) {
+          if (m.type === 'out') out += m.quantity;
+          else if (m.type === 'in') inn += m.quantity;
+        }
+        sessions.push({
+          id: 'current',
+          isCurrent: true,
+          label: 'In corso',
+          sublabel: closes[0]
+            ? `dalla chiusura del ${this.formatCloseDateShort(closes[0].date)}`
+            : 'dall\'inizio',
+          out, in: inn,
+          movementCount: movs.length,
+          movements: movs,
+          lowCount: null,
+        });
+      }
+
+      // Sessioni passate (1 per chiusura)
+      closes.forEach((cls, i) => {
+        const prevClose = closes[i + 1];
+        const start = prevClose?.closedAt || 0;
+        const end = cls.closedAt;
+        const movs = this.movements
+          .filter((m) => m.timestamp > start && m.timestamp <= end && inFilter(m));
+        sessions.push({
+          id: cls.date,
+          isCurrent: false,
+          label: this.formatCloseDate(cls.date),
+          sublabel: `chiusa ${new Date(cls.closedAt).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' })}`,
+          out: filterPid ? movs.filter((m) => m.type === 'out').reduce((s, m) => s + m.quantity, 0) : cls.out,
+          in:  filterPid ? movs.filter((m) => m.type === 'in').reduce((s, m) => s + m.quantity, 0)  : cls.in,
+          lowCount: cls.lowCount,
+          movementCount: filterPid ? movs.length : (cls.movementCount ?? movs.length),
+          movements: movs,
+        });
       });
+
+      return sessions;
     },
+
+    formatCloseDateShort(dateStr) {
+      const d = new Date(dateStr + 'T12:00:00');
+      return d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
+    },
+
+    toggleSession(id) {
+      this.expandedSessions = {
+        ...this.expandedSessions,
+        [id]: !this.expandedSessions[id],
+      };
+    },
+
     async deleteMovement(mv) {
       this.confirmDialog = {
         open: true, danger: true,
@@ -598,7 +664,26 @@ export function initApp() {
       };
     },
     exportMovementsCsv() {
-      exportMovementsCsv(this.filteredMovements);
+      exportMovementsCsv(this.movements);
+    },
+
+    // ====== Lista totale inventario ======
+    // Raggruppato per categoria, ordinato come nella rail.
+    get inventoryList() {
+      const byCat = {};
+      for (const p of this.products) {
+        if (p.archived) continue;
+        if (!byCat[p.category]) byCat[p.category] = [];
+        byCat[p.category].push(p);
+      }
+      return this.categories
+        .map((cat) => ({
+          category: cat,
+          rows: (byCat[cat.id] || []).sort((a, b) =>
+            (a.order ?? 9999) - (b.order ?? 9999) || a.name.localeCompare(b.name, 'it')
+          ),
+        }))
+        .filter((g) => g.rows.length > 0);
     },
 
     // ====== Fornitori ======
