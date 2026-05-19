@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Pencil, ArrowUpCircle, ArrowDownCircle, RefreshCw, Package, X, ChevronDown, ChevronUp, Sparkles, CornerDownLeft, SlidersHorizontal } from "lucide-react";
+import { Search, Plus, Pencil, X, Sparkles, CornerDownLeft, SlidersHorizontal } from "lucide-react";
 import { InlineEdit } from "@/components/inline-edit";
 import { suggestCategoryId } from "@/lib/suggest-category";
 import { parseProduct, inferCategoryTemplate } from "@/lib/parse-product";
@@ -52,12 +52,6 @@ export default function ScortePage() {
   const [filterCat, setFilterCat] = useState<number | "all">(initCat);
   const [filterLevel, setFilterLevel] = useState<string>("all");
 
-  // Move modal
-  const [moveProduct, setMoveProduct] = useState<Product | null>(null);
-  const [moveType, setMoveType] = useState<"carico" | "scarico" | "rettifica">("carico");
-  const [moveQty, setMoveQty] = useState("1");
-  const [moveNote, setMoveNote] = useState("");
-
   // Edit product modal
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isNewProduct, setIsNewProduct] = useState(false);
@@ -97,28 +91,9 @@ export default function ScortePage() {
     return order[stockLevel(a)] - order[stockLevel(b)];
   });
 
-  const doMove = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", "/api/movements", {
-        productId: moveProduct!.id,
-        type: moveType,
-        quantity: parseFloat(moveQty),
-        stockBefore: moveProduct!.currentStock,
-        stockAfter: 0, // will be recalculated server side
-        note: moveNote,
-        userId: "",
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/products"] });
-      qc.invalidateQueries({ queryKey: ["/api/stats/summary"] });
-      qc.invalidateQueries({ queryKey: ["/api/stats/activity"] });
-      qc.invalidateQueries({ queryKey: ["/api/movements"] });
-      setMoveProduct(null); setMoveQty("1"); setMoveNote("");
-      toast({ title: "✅ Movimento registrato" });
-    },
-    onError: (e: any) => toast({ title: "Errore", description: e.message, variant: "destructive" }),
-  });
+  // Movimenti carico/scarico rimossi dal catalogo: le azioni rapide vivono
+  // solo in /foglio (Inventario). Il catalogo gestisce anagrafica prodotti e
+  // categorie (vedi feedback-admin-piu-meno + dominio fogli settimanali).
 
   // Patch rapida di un singolo campo (per InlineEdit).
   const patchProduct = useMutation({
@@ -368,21 +343,10 @@ export default function ScortePage() {
                         {LEVEL_LABELS[level]}
                       </span>
                     </td>
-                    {/* Actions */}
+                    {/* Actions — solo Modifica anagrafica.
+                        Carico/scarico vivono in /foglio (Inventario). */}
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button data-testid={`button-carico-${p.id}`}
-                          onClick={() => { setMoveProduct(p); setMoveType("carico"); setMoveQty("1"); setMoveNote(""); }}
-                          title="Carico" className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-primary/10"
-                          style={{ color: "hsl(var(--status-carico))" }}>
-                          <ArrowUpCircle className="w-4 h-4" />
-                        </button>
-                        <button data-testid={`button-scarico-${p.id}`}
-                          onClick={() => { setMoveProduct(p); setMoveType("scarico"); setMoveQty("1"); setMoveNote(""); }}
-                          title="Scarico" className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-destructive/10"
-                          style={{ color: "hsl(var(--status-scarico))" }}>
-                          <ArrowDownCircle className="w-4 h-4" />
-                        </button>
                         {isAdmin && (
                           <button data-testid={`button-edit-${p.id}`}
                             onClick={() => openEdit(p)}
@@ -401,90 +365,8 @@ export default function ScortePage() {
         </div>
       )}
 
-      {/* ─── Move Dialog ─────────────────────────────────────────────────────── */}
-      <Dialog open={!!moveProduct} onOpenChange={() => setMoveProduct(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-display">
-              {moveType === "carico" ? "📦 Carico" : moveType === "scarico" ? "📤 Scarico" : "✏️ Rettifica"} — {moveProduct?.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            {/* Type selector */}
-            <div className="grid grid-cols-3 gap-2">
-              {(["carico", "scarico", "rettifica"] as const).map(t => (
-                <button key={t} data-testid={`button-type-${t}`}
-                  onClick={() => setMoveType(t)}
-                  className="py-2.5 px-3 rounded-xl text-sm font-medium capitalize transition-all border"
-                  style={moveType === t ? {
-                    background: `hsl(var(--status-${t === "rettifica" ? "rettifica" : t === "carico" ? "carico" : "scarico"}) / 0.15)`,
-                    color: `hsl(var(--status-${t === "rettifica" ? "rettifica" : t === "carico" ? "carico" : "scarico"}))`,
-                    borderColor: `hsl(var(--status-${t === "rettifica" ? "rettifica" : t === "carico" ? "carico" : "scarico"}) / 0.5)`,
-                  } : { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-                  {t === "carico" ? "📦 Carico" : t === "scarico" ? "📤 Scarico" : "✏️ Rettifica"}
-                </button>
-              ))}
-            </div>
-
-            {/* Stock preview */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
-              <div>
-                <p className="text-xs text-muted-foreground">Scorta attuale</p>
-                <p className="font-bold tabular-nums text-xl">{moveProduct?.currentStock} <span className="text-sm font-normal text-muted-foreground">{moveProduct?.unit}</span></p>
-              </div>
-              <div className="text-2xl">→</div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">Dopo il movimento</p>
-                <p className="font-bold tabular-nums text-xl" style={{ color: "hsl(var(--primary))" }}>
-                  {moveType === "carico"
-                    ? (moveProduct?.currentStock ?? 0) + (parseFloat(moveQty) || 0)
-                    : moveType === "scarico"
-                      ? Math.max(0, (moveProduct?.currentStock ?? 0) - (parseFloat(moveQty) || 0))
-                      : parseFloat(moveQty) || 0
-                  } <span className="text-sm font-normal text-muted-foreground">{moveProduct?.unit}</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Quantity */}
-            <div className="space-y-1.5">
-              <Label>{moveType === "rettifica" ? "Nuova quantità" : "Quantità"}</Label>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setMoveQty(q => String(Math.max(0.5, parseFloat(q) - (parseFloat(q) % 1 === 0 ? 1 : 0.5))))}
-                  className="w-10 h-10 rounded-lg border flex items-center justify-center text-lg font-bold hover:bg-muted transition-colors">−</button>
-                <Input type="number" step="0.5" min="0" data-testid="input-qty"
-                  value={moveQty} onChange={e => setMoveQty(e.target.value)}
-                  className="flex-1 text-center text-lg font-bold tabular-nums" />
-                <button onClick={() => setMoveQty(q => String(parseFloat(q) + 1))}
-                  className="w-10 h-10 rounded-lg border flex items-center justify-center text-lg font-bold hover:bg-muted transition-colors">+</button>
-                <span className="text-sm text-muted-foreground">{moveProduct?.unit}</span>
-              </div>
-              {/* Quick qty buttons */}
-              <div className="flex gap-1.5 flex-wrap">
-                {[0.5, 1, 2, 5, 10, 25].map(n => (
-                  <button key={n} onClick={() => setMoveQty(String(n))}
-                    className="px-2.5 py-1 text-xs rounded-md bg-muted hover:bg-muted/80 transition-colors tabular-nums">
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Note <span className="text-muted-foreground">(opzionale)</span></Label>
-              <Textarea data-testid="input-note" value={moveNote} onChange={e => setMoveNote(e.target.value)}
-                placeholder="es. Consegna Martedì, scadenza…" className="resize-none" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMoveProduct(null)}>Annulla</Button>
-            <Button onClick={() => doMove.mutate()} disabled={doMove.isPending || !moveQty || parseFloat(moveQty) < 0}
-              data-testid="button-confirm-move">
-              {doMove.isPending ? "Salvataggio…" : "Conferma"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Move dialog rimosso: i movimenti (carico/scarico) si fanno
+          dall'Inventario (/foglio), col dialog di conferma per riga. */}
 
       {/* ─── Product Edit Dialog ─────────────────────────────────────────────── */}
       <Dialog open={isNewProduct || !!editProduct} onOpenChange={() => { setEditProduct(null); setIsNewProduct(false); }}>

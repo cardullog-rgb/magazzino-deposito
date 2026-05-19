@@ -7,86 +7,104 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 @layer base {
+  /* ─── Tema chiaro ───────────────────────────────────────────────────────────
+     Tre livelli di superficie ben distinti per dare profondità senza colore:
+       sidebar (panel più scuro)  <  background (off-white tintato)  <  card (bianco)
+     Bordi un filo più visibili (84%) per delimitare schede e righe.
+     ───────────────────────────────────────────────────────────────────────── */
   :root {
-    --background: 0 0% 99%;
-    --foreground: 220 15% 12%;
-    --card: 0 0% 100%;
-    --card-foreground: 220 15% 12%;
+    --background: 220 20% 96%;        /* off-white blu-grigio: non più bianco piatto */
+    --foreground: 220 28% 11%;        /* inchiostro più saturo, contrasto deciso */
+    --card: 0 0% 100%;                /* bianco puro: le card si staccano dallo sfondo */
+    --card-foreground: 220 28% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 12%;
-    --primary: 220 70% 48%;
+    --popover-foreground: 220 28% 11%;
+    --primary: 220 75% 46%;            /* blu pieno, niente neon */
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 10% 95%;
-    --secondary-foreground: 220 15% 22%;
-    --muted: 220 10% 96%;
-    --muted-foreground: 220 8% 45%;
-    --accent: 220 10% 94%;
-    --accent-foreground: 220 15% 22%;
-    --destructive: 0 72% 51%;
+    --secondary: 220 16% 90%;
+    --secondary-foreground: 220 25% 22%;
+    --muted: 220 16% 92%;
+    --muted-foreground: 220 10% 42%;
+    --accent: 220 16% 89%;
+    --accent-foreground: 220 25% 22%;
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 90%;
-    --input: 220 13% 88%;
-    --ring: 220 70% 48%;
+    --border: 220 16% 84%;             /* bordi più solidi (era 90%) */
+    --input: 220 16% 82%;
+    --ring: 220 75% 46%;
     --radius: 6px;
 
-    /* Sidebar — chiara, sobria */
-    --sidebar-background: 220 14% 97%;
-    --sidebar-foreground: 220 15% 22%;
-    --sidebar-primary: 220 70% 48%;
+    /* Sidebar — panel un gradino più scuro del background per "incassarsi" */
+    --sidebar-background: 220 20% 93%;
+    --sidebar-foreground: 220 25% 22%;
+    --sidebar-primary: 220 75% 46%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 13% 92%;
-    --sidebar-accent-foreground: 220 15% 22%;
-    --sidebar-border: 220 13% 88%;
-    --sidebar-ring: 220 70% 48%;
+    --sidebar-accent: 220 18% 87%;
+    --sidebar-accent-foreground: 220 28% 18%;
+    --sidebar-border: 220 16% 80%;
+    --sidebar-ring: 220 75% 46%;
+
+    /* Ombre sottili — per dare “qualità solida” alle card */
+    --shadow-sm: 0 1px 2px hsl(220 25% 15% / 0.04), 0 1px 1px hsl(220 25% 15% / 0.03);
+    --shadow-md: 0 2px 6px hsl(220 25% 15% / 0.06), 0 1px 2px hsl(220 25% 15% / 0.04);
 
     /* Stato scorta */
-    --status-ok: 142 65% 38%;
-    --status-low: 32 90% 48%;
-    --status-out: 0 72% 51%;
+    --status-ok: 142 60% 36%;
+    --status-low: 32 90% 46%;
+    --status-out: 0 72% 48%;
 
     /* Movimenti */
-    --status-carico: 142 65% 38%;
-    --status-scarico: 0 72% 51%;
+    --status-carico: 142 60% 36%;
+    --status-scarico: 0 72% 48%;
     --status-rettifica: 268 50% 50%;
   }
 
+  /* ─── Tema scuro ────────────────────────────────────────────────────────────
+     Tre livelli ben separati (era tutto grigio uniforme):
+       sidebar 6%  <  background 9%  <  card 13%  <  secondary 19%
+     Bordi più chiari (28%) per delimitare visibilmente righe e bottoni.
+     ───────────────────────────────────────────────────────────────────────── */
   .dark {
-    --background: 220 15% 8%;
-    --foreground: 220 10% 92%;
-    --card: 220 15% 11%;
-    --card-foreground: 220 10% 92%;
-    --popover: 220 15% 11%;
-    --popover-foreground: 220 10% 92%;
-    --primary: 220 80% 60%;
-    --primary-foreground: 220 15% 8%;
-    --secondary: 220 12% 16%;
-    --secondary-foreground: 220 10% 82%;
-    --muted: 220 12% 14%;
-    --muted-foreground: 220 8% 58%;
-    --accent: 220 12% 16%;
-    --accent-foreground: 220 10% 82%;
-    --destructive: 0 65% 55%;
+    --background: 222 22% 9%;
+    --foreground: 220 14% 93%;
+    --card: 222 18% 13%;               /* card "alzata" sopra il background */
+    --card-foreground: 220 14% 93%;
+    --popover: 222 18% 14%;
+    --popover-foreground: 220 14% 93%;
+    --primary: 220 82% 64%;
+    --primary-foreground: 222 25% 8%;
+    --secondary: 222 14% 19%;
+    --secondary-foreground: 220 12% 86%;
+    --muted: 222 14% 17%;
+    --muted-foreground: 220 10% 62%;
+    --accent: 222 14% 22%;
+    --accent-foreground: 220 12% 88%;
+    --destructive: 0 68% 56%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 12% 20%;
-    --input: 220 12% 22%;
-    --ring: 220 80% 60%;
+    --border: 222 14% 26%;             /* bordi visibili (era 20%) */
+    --input: 222 14% 25%;
+    --ring: 220 82% 64%;
 
-    --sidebar-background: 220 15% 10%;
-    --sidebar-foreground: 220 10% 82%;
-    --sidebar-primary: 220 80% 60%;
-    --sidebar-primary-foreground: 220 15% 8%;
-    --sidebar-accent: 220 12% 14%;
-    --sidebar-accent-foreground: 220 10% 88%;
-    --sidebar-border: 220 12% 16%;
-    --sidebar-ring: 220 80% 60%;
+    /* Sidebar — più scura del main, dà l’impressione di un pannello incassato */
+    --sidebar-background: 222 24% 6%;
+    --sidebar-foreground: 220 14% 84%;
+    --sidebar-primary: 220 82% 64%;
+    --sidebar-primary-foreground: 222 25% 8%;
+    --sidebar-accent: 222 18% 16%;
+    --sidebar-accent-foreground: 220 14% 90%;
+    --sidebar-border: 222 16% 18%;
+    --sidebar-ring: 220 82% 64%;
 
-    --status-ok: 142 55% 50%;
-    --status-low: 32 90% 56%;
-    --status-out: 0 70% 60%;
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.40), 0 1px 1px hsl(0 0% 0% / 0.30);
+    --shadow-md: 0 2px 6px hsl(0 0% 0% / 0.45), 0 1px 2px hsl(0 0% 0% / 0.30);
 
-    --status-carico: 142 55% 50%;
-    --status-scarico: 0 70% 60%;
-    --status-rettifica: 268 50% 65%;
+    --status-ok: 142 55% 52%;
+    --status-low: 32 90% 58%;
+    --status-out: 0 72% 62%;
+
+    --status-carico: 142 55% 52%;
+    --status-scarico: 0 72% 62%;
+    --status-rettifica: 268 55% 68%;
   }
 
   /* Font tokens */
@@ -152,6 +170,21 @@ input, select, textarea { font-size: 16px !important; }
   background: hsl(var(--primary) / 0.2);
   color: hsl(var(--foreground));
 }
+
+/* ─── Ombre tema scuro ──────────────────────────────────────────────────────
+   Tailwind shadow-sm/shadow-md di default sono nere troppo trasparenti su
+   sfondi scuri. Li rendiamo più definiti così card e popover si "alzano".
+   ───────────────────────────────────────────────────────────────────────── */
+.dark .shadow-sm  { box-shadow: var(--shadow-sm) !important; }
+.dark .shadow,
+.dark .shadow-md  { box-shadow: var(--shadow-md) !important; }
+.dark .shadow-lg  { box-shadow: 0 8px 16px hsl(0 0% 0% / 0.55), 0 2px 4px hsl(0 0% 0% / 0.35) !important; }
+
+/* Anche in chiaro: una mano in più di profondità sulle card senza spaccare
+   il look. Sostituiamo gli shadow-sm di Tailwind con quelli tintati di blu. */
+:root:not(.dark) .shadow-sm { box-shadow: var(--shadow-sm); }
+:root:not(.dark) .shadow,
+:root:not(.dark) .shadow-md { box-shadow: var(--shadow-md); }
 
 /* ─── Foglio · Tap cell long-press ring ────────────────────────────────────── */
 @keyframes tap-fill {

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Minus, Undo2, X, Search } from "lucide-react";
+import { MovementDialog } from "@/components/movement-dialog";
 import type { Product, Category, Sheet, SheetRow } from "@shared/schema";
 
 type EnrichedRow = SheetRow & { product: Product; category: Category };
@@ -36,6 +37,10 @@ export default function BancoPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [filterMacro, setFilterMacro] = useState<string>("all");
+  // Dialog di conferma per registrare un movimento: tap su +/- non parte
+  // subito, apre il dialog (uguale a /foglio) cosi si vede "Ora -> Dopo"
+  // e si puo' scegliere quantita' diversa da 1 senza tap multipli.
+  const [editing, setEditing] = useState<{ row: EnrichedRow; type: "entrata" | "uscita" } | null>(null);
 
   const { data, isLoading, isError } = useQuery<CurrentSheet>({
     queryKey: ["/api/sheet/current"],
@@ -59,14 +64,14 @@ export default function BancoPage() {
   }
 
   const movementMut = useMutation({
-    mutationFn: async (vars: { row: EnrichedRow; type: "entrata" | "uscita" }) => {
+    mutationFn: async (vars: { row: EnrichedRow; type: "entrata" | "uscita"; quantity: number }) => {
       const res = await apiRequest("POST", "/api/sheet/movement", {
         productId: vars.row.product.id,
         type: vars.type,
-        quantity: 1,
+        quantity: vars.quantity,
       });
       const json = await res.json();
-      return { ...json, _row: vars.row, _type: vars.type };
+      return { ...json, _row: vars.row, _type: vars.type, _qty: vars.quantity };
     },
     onSuccess: (json: any) => {
       qc.invalidateQueries({ queryKey: ["/api/sheet/current"] });
@@ -77,11 +82,12 @@ export default function BancoPage() {
           movementId: json.movement.id,
           productName: json._row.product.name,
           type: json._type,
-          quantity: 1,
+          quantity: json._qty,
           unit: json._row.product.unit,
         });
         scheduleUndoHide();
       }
+      setEditing(null);
     },
     onError: (e: any) => toast({ title: "Errore", description: e.message, variant: "destructive" }),
   });
@@ -274,17 +280,17 @@ export default function BancoPage() {
                       </p>
                     </div>
 
-                    {/* Pulsantone − */}
+                    {/* Pulsantone -, apre dialog conferma */}
                     <button
-                      onClick={() => movementMut.mutate({ row, type: "uscita" })}
-                      disabled={movementMut.isPending || row.finalCalculated <= 0}
+                      onClick={() => setEditing({ row, type: "uscita" })}
+                      disabled={row.finalCalculated <= 0}
                       data-testid={`btn-meno-${row.product.id}`}
                       className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
                       style={{
                         background: "hsl(var(--status-scarico) / 0.12)",
                         color: "hsl(var(--status-scarico))",
                       }}
-                      aria-label={`Togli 1 ${row.product.unit}`}
+                      aria-label={`Togli dal magazzino ${row.product.name}`}
                     >
                       <Minus className="w-7 h-7" strokeWidth={3} />
                     </button>
@@ -302,17 +308,16 @@ export default function BancoPage() {
                       </div>
                     </div>
 
-                    {/* Pulsantone + */}
+                    {/* Pulsantone +, apre dialog conferma */}
                     <button
-                      onClick={() => movementMut.mutate({ row, type: "entrata" })}
-                      disabled={movementMut.isPending}
+                      onClick={() => setEditing({ row, type: "entrata" })}
                       data-testid={`btn-piu-${row.product.id}`}
                       className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90"
                       style={{
                         background: "hsl(var(--status-carico) / 0.12)",
                         color: "hsl(var(--status-carico))",
                       }}
-                      aria-label={`Aggiungi 1 ${row.product.unit}`}
+                      aria-label={`Aggiungi al magazzino ${row.product.name}`}
                     >
                       <Plus className="w-7 h-7" strokeWidth={3} />
                     </button>
@@ -323,6 +328,17 @@ export default function BancoPage() {
           </section>
         ))}
       </div>
+
+      {/* Dialog conferma movimento (riusato dall'inventario admin). */}
+      {editing && (
+        <MovementDialog
+          row={editing.row}
+          type={editing.type}
+          onClose={() => setEditing(null)}
+          onConfirm={(qty) => movementMut.mutate({ row: editing.row, type: editing.type, quantity: qty })}
+          pending={movementMut.isPending}
+        />
+      )}
     </div>
   );
 }

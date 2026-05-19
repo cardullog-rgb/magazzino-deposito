@@ -18,6 +18,8 @@ interface Ctx {
   login(u: string, p: string): Promise<void>;
   // Login automatico dell'iPad dietro bancone (utente fisso "ipad", senza password).
   quickLoginIpad(): Promise<void>;
+  // Login automatico admin senza password. Vedi commento in server/routes.ts.
+  quickLoginAdmin(): Promise<void>;
   logout(): void;
   // Elevazione admin temporanea: il dipendente passa "in modalità admin" per ELEVATION_MS
   // mostrando username+password admin. Allo scadere torna allo staff senza dover rifare login.
@@ -34,7 +36,9 @@ const AuthContext = createContext<Ctx | null>(null);
 const STORAGE_KEY = "magazzino.user";
 const BASE_KEY = "magazzino.baseUser";
 const ELEV_KEY = "magazzino.elevationExpiresAt";
-const ELEVATION_MS = 5 * 60 * 1000; // 5 minuti
+const ELEVATION_MS = 3 * 60 * 1000; // 3 minuti
+// Throttle dei bump: aggiorno la scadenza al massimo ogni 5s anche se l'utente tocca continuamente.
+const ACTIVITY_BUMP_THROTTLE_MS = 5 * 1000;
 
 function loadStored<T>(key: string): T | null {
   try {
@@ -53,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return typeof v === "number" && v > Date.now() ? v : null;
   });
   const tickRef = useRef<number | null>(null);
+  const lastBumpRef = useRef<number>(0);
 
   // Se l'elevazione scade, ripristina l'utente base
   useEffect(() => {
@@ -67,6 +72,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (tickRef.current) window.clearTimeout(tickRef.current);
     };
   }, [elevationExpiresAt]);
+
+  // Mentre l'elevazione è attiva, ogni tocco/tasto sposta la scadenza in avanti
+  // (timer di inattività, non timer assoluto). Throttle a ACTIVITY_BUMP_THROTTLE_MS.
+  useEffect(() => {
+    if (!elevationExpiresAt) return;
+    const bump = () => {
+      const now = Date.now();
+      if (now - lastBumpRef.current < ACTIVITY_BUMP_THROTTLE_MS) return;
+      lastBumpRef.current = now;
+      const next = now + ELEVATION_MS;
+      localStorage.setItem(ELEV_KEY, JSON.stringify(next));
+      setElevationExpiresAt(next);
+    };
+    window.addEventListener("pointerdown", bump, { passive: true });
+    window.addEventListener("keydown", bump);
+    return () => {
+      window.removeEventListener("pointerdown", bump);
+      window.removeEventListener("keydown", bump);
+    };
+  }, [elevationExpiresAt !== null]);
 
   function endElevationInternal() {
     setElevationExpiresAt(null);
@@ -92,6 +117,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const quickLoginIpad = async () => {
     const res = await apiRequest("POST", "/api/auth/quick-login-ipad", {});
+    const u = await res.json();
+    if (u.error) throw new Error(u.error);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    localStorage.setItem(BASE_KEY, JSON.stringify(u));
+    localStorage.removeItem(ELEV_KEY);
+    setUser(u);
+    setBaseUser(u);
+    setElevationExpiresAt(null);
+    window.location.hash = "/";
+  };
+
+  const quickLoginAdmin = async () => {
+    const res = await apiRequest("POST", "/api/auth/quick-login-admin", {});
     const u = await res.json();
     if (u.error) throw new Error(u.error);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
@@ -142,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, baseUser, login, quickLoginIpad, logout, elevateAdmin, endElevation, refreshUser,
+      user, baseUser, login, quickLoginIpad, quickLoginAdmin, logout, elevateAdmin, endElevation, refreshUser,
       isAdmin, isElevated, elevationExpiresAt,
     }}>
       {children}

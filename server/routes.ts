@@ -79,6 +79,25 @@ export function registerRoutes(httpServer: Server, app: Express): void {
     res.json(safe);
   });
 
+  // Quick-login admin senza password. Uso interno su rete LAN - chiunque puo'
+  // accedere al gestionale con pieni poteri. Se serve riattivare la password
+  // basta riassegnare al campo password dell'utente admin un hash valido e
+  // togliere questa rotta.
+  app.post("/api/auth/quick-login-admin", loginLimiter, (_req, res) => {
+    const user = storage.getUserByUsername("admin");
+    if (!user || !user.active || user.role !== "admin") {
+      return res.status(404).json({ error: "Utente admin non disponibile" });
+    }
+    // Se l'admin era marcato come "must change password" lo liberiamo, cosi
+    // non viene rimandato alla schermata di cambio password ad ogni accesso.
+    if (user.mustChangePassword) {
+      storage.updateUser(user.id, { mustChangePassword: false } as any);
+    }
+    const fresh = storage.getUserById(user.id)!;
+    const { password: _, ...safe } = fresh;
+    res.json(safe);
+  });
+
   // Cambio password (anche obbligatorio al primo login).
   app.post("/api/auth/change-password", requireAuth, (req: AuthedRequest, res) => {
     const { currentPassword, newPassword } = req.body ?? {};

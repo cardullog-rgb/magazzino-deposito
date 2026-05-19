@@ -99,7 +99,7 @@ function AdminElevationControl() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground -mt-2">
-            5 minuti per modifiche al volo, poi torni in modalità banco.
+            3 minuti per modifiche al volo. Il timer riparte ad ogni tocco; allo scadere torni in modalità banco.
           </p>
           <div className="space-y-2">
             <Input
@@ -139,7 +139,7 @@ function AdminElevationControl() {
       await elevateAdmin(username, password);
       setOpen(false);
       setUsername(""); setPassword("");
-      toast({ title: "Modalità admin", description: "Attiva per 5 minuti." });
+      toast({ title: "Modalità admin", description: "Attiva 3 min dall'ultima azione." });
     } catch (e: any) {
       toast({ title: "Errore", description: e.message ?? "Credenziali errate", variant: "destructive" });
     } finally {
