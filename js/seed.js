@@ -1,0 +1,167 @@
+// Dati iniziali ricavati dalle foto della pizzeria.
+// L'admin può modificare/aggiungere prodotti, soglie e unità dopo il primo avvio.
+
+export const CATEGORIES = [
+  { id: 'acque',         name: 'Acque',              icon: '💧', order: 1 },
+  { id: 'birre',         name: 'Birre & Fusti',      icon: '🍺', order: 2 },
+  { id: 'analcoliche',   name: 'Bevande',            icon: '🥤', order: 3 },
+  { id: 'amari',         name: 'Amari & Distillati', icon: '🥃', order: 4 },
+  { id: 'cocktail',      name: 'Cocktail Bar',       icon: '🍸', order: 5 },
+  { id: 'vini-bianchi',  name: 'Vini Bianchi',       icon: '🥂', order: 6 },
+  { id: 'vini-rossi',    name: 'Vini Rossi',         icon: '🍷', order: 7 },
+];
+
+export const UNITS = ['bottiglia', 'cassetta', 'fusto', 'bombola', 'lattina', 'kg', 'pz'];
+
+const slug = (s) => s
+  .toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/(^-|-$)/g, '');
+
+const p = (name, category, unit = 'bottiglia', minThreshold = 2) => ({
+  id: slug(name),
+  name,
+  category,
+  unit,
+  currentStock: 0,
+  minThreshold,
+  supplierId: null,
+  archived: false,
+});
+
+export const PRODUCTS = [
+  // ===== Acque =====
+  p('Acqua Naturale',     'acque',       'cassetta', 3),
+  p('Acqua Frizzante',    'acque',       'cassetta', 3),
+  p('Acqua Ferrarelle',   'acque',       'cassetta', 2),
+
+  // ===== Birre & Fusti =====
+  p('Fusti Heineken',     'birre',       'fusto', 1),
+  p('Fusti Affligen',     'birre',       'fusto', 1),
+  p('Fusti Messina',      'birre',       'fusto', 1),
+  p('Bombola CO2',        'birre',       'bombola', 1),
+  p('Heineken 0',         'birre',       'cassetta', 2),
+  p('Heineken',           'birre',       'cassetta', 2),
+  p('Corona',             'birre',       'cassetta', 2),
+  p('Erdinger',           'birre',       'cassetta', 2),
+  p('Fisher',             'birre',       'cassetta', 2),
+  p('Blanche De Namur',   'birre',       'cassetta', 2),
+
+  // ===== Bevande analcoliche =====
+  p('Coca Zero 33cl',     'analcoliche', 'cassetta', 2),
+  p('Coca Cola 33cl',     'analcoliche', 'cassetta', 2),
+  p('Coca Cola 1lt',      'analcoliche', 'cassetta', 2),
+  p('Chinotto',           'analcoliche', 'cassetta', 2),
+  p('Gazzosa',            'analcoliche', 'cassetta', 2),
+  p('Limonata',           'analcoliche', 'cassetta', 2),
+  p('Aranciata bio',      'analcoliche', 'cassetta', 2),
+  p('Acqua Tonica',       'analcoliche', 'cassetta', 2),
+  p('Schweppes Lemon',    'analcoliche', 'cassetta', 2),
+  p('Ginger Beer',        'analcoliche', 'cassetta', 2),
+  p('Succo Ananas',       'analcoliche', 'cassetta', 2),
+  p('Succo Arancia',      'analcoliche', 'cassetta', 2),
+  p('Succo Pesca',        'analcoliche', 'cassetta', 2),
+
+  // ===== Amari & Distillati =====
+  p('Amaro Amara',                'amari'),
+  p('Amaretto Disaronno',         'amari'),
+  p('Amaro Unnimaffissu',         'amari'),
+  p('Amaro Montenegro',           'amari'),
+  p('Amaro Averna',               'amari'),
+  p('Amaro Del Capo',             'amari'),
+  p('Amaro Del Capo piccante',    'amari'),
+  p("Amaro Dell'Etna",            'amari'),
+  p('Amaro Unicum',               'amari'),
+  p('Branca Menta',               'amari'),
+  p('Fernet Branca',              'amari'),
+  p('Jefferson',                  'amari'),
+  p('Jagermeister',               'amari'),
+  p('Limoncello',                 'amari'),
+  p('Baileys',                    'amari'),
+  p('Jack Daniels',               'amari'),
+  p('Zacapa 23',                  'amari'),
+  p('Drambuie',                   'amari'),
+  p('Grand Marnier',              'amari'),
+  p('Matusalem',                  'amari'),
+  p('Ballantines',                'amari'),
+  p('Bushmills',                  'amari'),
+  p('Martell Cognac',             'amari'),
+  p('Prime uve',                  'amari'),
+  p('Pampero',                    'amari'),
+  p('Grappa Barricata 903',       'amari'),
+  p('Diciotto Lune',              'amari'),
+  p('Havana Club 7',              'amari'),
+  p('Havana Club 3',              'amari'),
+  p('Passito',                    'amari'),
+  p('Vino alle Mandorle',         'amari'),
+  p('Zibibbo',                    'amari'),
+
+  // ===== Cocktail Bar =====
+  p('Aperol',                     'cocktail'),
+  p('Batida De Coco',             'cocktail'),
+  p('Campari',                    'cocktail'),
+  p('Cointreau',                  'cocktail'),
+  p('Gin Bombay',                 'cocktail'),
+  p('Gin Gordon',                 'cocktail'),
+  p("Gin Hendrick's",             'cocktail'),
+  p('Gin Tanqueray',              'cocktail'),
+  p('Gin Portofino',              'cocktail'),
+  p('Gin Etsu',                   'cocktail'),
+  p('Gin Panarea Island',         'cocktail'),
+  p('Gin Panarea Sunset',         'cocktail'),
+  p('Gin Etneum',                 'cocktail'),
+  p('Gin Legend',                 'cocktail'),
+  p('Gin Mare',                   'cocktail'),
+  p('Tequila Jose Cuervo',        'cocktail'),
+  p('Tequila Jose Cuervo Silver', 'cocktail'),
+  p('Triplesec',                  'cocktail'),
+  p('Kahlua',                     'cocktail'),
+  p('Curacao blu',                'cocktail'),
+  p('Martini Bianco',             'cocktail'),
+  p('Martini Rosso',              'cocktail'),
+  p('Martini Extra Dry',          'cocktail'),
+  p('Peachtree',                  'cocktail'),
+  p('Sambuca',                    'cocktail'),
+  p('St Germain',                 'cocktail'),
+  p('Tequila',                    'cocktail'),
+  p('Midori',                     'cocktail'),
+  p('Malibu',                     'cocktail'),
+  p('Passoa PassionFruit',        'cocktail'),
+  p('Vodka Raspberry',            'cocktail'),
+  p('Vodka Absolut',              'cocktail'),
+  p('Vodka Belvedere',            'cocktail'),
+  p('Vodka Grey Goose',           'cocktail'),
+  p('Vodka Sky',                  'cocktail'),
+  p('Vodka Beluga',               'cocktail'),
+  p('Vodka alla Pesca',           'cocktail'),
+  p('Vodka alla Fragola',         'cocktail'),
+  p('Vodka Moskowskai',           'cocktail'),
+
+  // ===== Vini Bianchi =====
+  p('Carizza',                    'vini-bianchi'),
+  p('Cusinì',                     'vini-bianchi'),
+  p('Cisirì',                     'vini-bianchi'),
+  p('Tornatore Etna Bianco',      'vini-bianchi'),
+  p('Grillo Santa Tresa',         'vini-bianchi'),
+  p('Iancura',                    'vini-bianchi'),
+  p('Mango Tenuta San',           'vini-bianchi'),
+  p('Gulfi Caricanti',            'vini-bianchi'),
+  p('Borelli Prosecco',           'vini-bianchi'),
+  p('Carpenè Malvolti',           'vini-bianchi'),
+  p('Chardonnay Principi di',     'vini-bianchi'),
+
+  // ===== Vini Rossi =====
+  p('Tornatore Etna Rosso',           'vini-rossi'),
+  p("Surya Nero d'Avola",             'vini-rossi'),
+  p('Sul Vulcano Etna Rosso',         'vini-rossi'),
+  p('Santa Tresa Frappato',           'vini-rossi'),
+  p('Santa Tresa Cerasuolo Vittoria', 'vini-rossi'),
+  p('Maria Costanza',                 'vini-rossi'),
+  p('Kayd Syrah',                     'vini-rossi'),
+  p('Graci Etna Rosso',               'vini-rossi'),
+  p('Cottanera Etna',                 'vini-rossi'),
+  p('Buttitah',                       'vini-rossi'),
+  p("Amorì Nero d'Avola",             'vini-rossi'),
+  p("L'amorì",                        'vini-rossi'),
+];
