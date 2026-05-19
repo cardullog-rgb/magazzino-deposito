@@ -1428,6 +1428,26 @@ main.content {
 }
 .row input:focus { border-color: var(--accent); }
 
+/* Ultima cella di una row: allinea a destra il/i bottone/i azione */
+.row > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.row .btn,
+.row .btn.small {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  width: auto;
+  min-width: 0;
+}
+.row .btn.small {
+  padding: 6px 12px;
+  min-height: 32px;
+  font-size: 12.5px;
+}
+
 /* Pills selector — sostituto del <select> nativo su iPad */
 .cat-pills {
   display: flex;
