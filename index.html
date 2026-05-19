@@ -266,9 +266,9 @@
                       </div>
                       <div class="muted col-hide-sm" x-text="prod.minThreshold"></div>
                       <div>
-                        <button class="btn small" @click="openEditProduct(prod)" title="Modifica">✎</button>
-                        <button class="btn small danger" @click="openQty(prod, 'out')" :disabled="prod.currentStock <= 0" title="Uscita">−</button>
-                        <button class="btn small ok" @click="openQty(prod, 'in')" title="Ingresso">+</button>
+                        <button class="btn small sym edit" @click="openEditProduct(prod)" title="Modifica">✎</button>
+                        <button class="btn small sym danger" @click="openQty(prod, 'out')" :disabled="prod.currentStock <= 0" title="Uscita">−</button>
+                        <button class="btn small sym ok" @click="openQty(prod, 'in')" title="Ingresso">+</button>
                       </div>
                     </div>
                   </template>
@@ -537,6 +537,15 @@
         <div class="qty-display" :class="qtyDialog.mode">
           <span class="sign" x-text="qtyDialog.mode === 'out' ? '−' : '+'"></span><span x-text="qtyDialog.qty"></span>
           <span class="qty-unit" x-text="qtyDialog.product?.unit"></span>
+        </div>
+
+        <!-- Input libero: digita la quantità che vuoi -->
+        <div class="qty-input-row">
+          <label>oppure scrivi</label>
+          <input type="number" min="1" step="0.5" inputmode="decimal"
+                 :value="qtyDialog.qty"
+                 @input="qtySet(parseFloat($event.target.value) || 1)"
+                 :class="qtyDialog.mode" />
         </div>
 
         <div class="qty-grid">

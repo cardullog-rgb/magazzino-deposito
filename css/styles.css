@@ -1276,6 +1276,50 @@ main.content {
   letter-spacing: 0.5px;
   margin-top: 8px;
 }
+.qty-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: var(--bg-warm);
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+}
+.qty-input-row label {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-mute);
+  letter-spacing: 0.3px;
+  flex: 0 0 auto;
+}
+.qty-input-row input {
+  flex: 1;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s, color 0.15s;
+  min-width: 0;
+  -moz-appearance: textfield;
+}
+.qty-input-row input::-webkit-outer-spin-button,
+.qty-input-row input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.qty-input-row input:focus { border-color: var(--accent); }
+.qty-input-row input.out:focus { border-color: var(--terra); color: var(--terra); }
+.qty-input-row input.in:focus  { border-color: var(--sage); color: var(--sage); }
+
 .qty-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1598,6 +1642,31 @@ main.content {
   min-height: 32px;
   font-size: 12.5px;
 }
+/* Bottoni a simbolo (lista inventario): quadrati, simbolo mono grande e ben visibile */
+.row .btn.sym {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.row .btn.sym.danger { color: #fff5ec; }
+.row .btn.sym.ok { color: #ecfff0; }
+.row .btn.sym.edit {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+  border-color: var(--line);
+}
+.row .btn.sym.edit:hover { color: var(--accent); border-color: var(--accent); }
 
 /* Pills selector — sostituto del <select> nativo su iPad */
 .cat-pills {

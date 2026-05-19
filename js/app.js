@@ -360,8 +360,12 @@ export function initApp() {
     openQty(product, mode = 'out') {
       this.qtyDialog = { open: true, product, qty: 1, mode };
     },
-    qtyAdd(n) { this.qtyDialog.qty = Math.max(1, this.qtyDialog.qty + n); },
-    qtySet(n) { this.qtyDialog.qty = Math.max(1, n); },
+    qtyAdd(n) { this.qtyDialog.qty = Math.max(0.5, this.qtyDialog.qty + n); },
+    qtySet(n) {
+      const v = Number(n);
+      if (!isFinite(v) || v <= 0) { this.qtyDialog.qty = 1; return; }
+      this.qtyDialog.qty = Math.max(0.5, v);
+    },
     qtyCancel() { this.qtyDialog.open = false; },
 
     async qtyConfirm() {
