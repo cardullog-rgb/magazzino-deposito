@@ -17,14 +17,16 @@
 </head>
 <body>
 
-<div id="app" x-data="app" x-cloak :class="screen === 'admin' ? 'app admin' : 'app staff'">
+<div id="app" x-data="app" x-cloak class="app" :class="{ 'admin-on': adminUnlocked }">
 
   <!-- ============ TOPBAR ============ -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark">
-        <template x-if="screen === 'staff'"><span><span class="pin">M</span>agazzino</span></template>
-        <template x-if="screen === 'admin'"><span><span class="pin">M</span>agazzino <em style="font-size:0.5em;letter-spacing:3px;text-transform:uppercase;color:var(--admin);margin-left:8px;">admin</em></span></template>
+        <span><span class="pin">M</span>agazzino</span>
+        <template x-if="adminUnlocked">
+          <em style="font-size:0.5em;letter-spacing:3px;text-transform:uppercase;color:var(--admin);margin-left:8px;">admin</em>
+        </template>
       </div>
       <span class="brand-rule"></span>
       <span class="brand-date" x-text="todayLabel.toUpperCase()"></span>
@@ -32,8 +34,8 @@
 
     <div class="spacer"></div>
 
-    <!-- Search (only on staff) -->
-    <template x-if="screen === 'staff' && !setupMode">
+    <!-- Ricerca prodotti -->
+    <template x-if="!setupMode">
       <div class="topsearch">
         <span class="ico">⌕</span>
         <input type="search" placeholder="cerca prodotto…"
@@ -54,104 +56,99 @@
       </div>
     </template>
 
-    <!-- Admin badge + countdown when in admin mode -->
-    <template x-if="screen === 'admin'">
+    <!-- Pill timer admin + esci, quando sbloccato -->
+    <template x-if="adminUnlocked">
       <div class="flex-row">
         <span class="timeout-pill" x-text="`${adminRemainingSec}s`"></span>
-        <span class="admin-badge">Admin</span>
-        <button class="btn small ghost" @click="exitAdmin()">Esci</button>
+        <button class="btn small ghost" @click="exitAdmin()">Esci admin</button>
       </div>
     </template>
 
-    <!-- Theme toggle (sempre visibile) -->
+    <!-- Tema -->
     <button class="theme-toggle" @click="toggleTheme()"
-            :title="theme === 'dark' ? 'Passa a tema chiaro' : 'Passa a tema scuro'">
+            :title="theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'">
       <span x-show="theme === 'dark'">☀</span>
       <span x-show="theme === 'light'" style="font-size:16px">☾</span>
     </button>
 
-    <!-- Admin lock button on staff -->
-    <template x-if="screen === 'staff'">
-      <button class="admin-lock" @click="openPinLogin()" :disabled="setupMode" title="Modalità Admin">⚿</button>
+    <!-- Lock admin: visibile solo se non sbloccato -->
+    <template x-if="!adminUnlocked">
+      <button class="admin-lock" @click="openPinLogin()" :disabled="setupMode" title="Sblocca admin">⚿</button>
     </template>
   </header>
 
-  <!-- ============ LEFT RAIL: categorie (solo staff) ============ -->
-  <template x-if="screen === 'staff'">
-    <nav class="rail">
-      <div class="rail-section">Categorie</div>
-      <template x-for="cat in categories" :key="cat.id">
-        <button class="rail-item" :class="{ active: cat.id === activeCategory }" @click="activeCategory = cat.id">
-          <span class="ico" x-text="cat.icon"></span>
-          <span class="lbl" x-text="cat.name"></span>
-          <template x-if="countLowByCategory[cat.id] > 0">
-            <span class="badge" x-text="countLowByCategory[cat.id]"></span>
-          </template>
-        </button>
-      </template>
-      <div class="rail-divider"></div>
-      <div class="rail-section">Riepilogo</div>
-      <div style="padding: 8px 10px;">
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-mute);letter-spacing:0.5px;line-height:1.7">
-          <div>↓ uscite oggi · <span style="color:var(--terra);font-weight:600" x-text="todayStats.out"></span></div>
-          <div>↑ ingressi oggi · <span style="color:var(--sage);font-weight:600" x-text="todayStats.in"></span></div>
-          <div>⚠ sotto soglia · <span style="color:var(--terra);font-weight:600" x-text="countLow"></span></div>
-        </div>
-      </div>
-    </nav>
-  </template>
-
-  <!-- ============ ADMIN TABS ============ -->
-  <template x-if="screen === 'admin'">
-    <nav class="tabs">
-      <button class="tab" :class="{ active: adminTab === 'inventario' }"   @click="setAdminTab('inventario')">📦 Inventario</button>
-      <button class="tab" :class="{ active: adminTab === 'rifornimenti' }" @click="setAdminTab('rifornimenti')">📥 Rifornimenti</button>
-      <button class="tab" :class="{ active: adminTab === 'movimenti' }"    @click="setAdminTab('movimenti')">🧾 Movimenti</button>
-      <button class="tab" :class="{ active: adminTab === 'avvisi' }"       @click="setAdminTab('avvisi')">⚠ Avvisi <span x-show="countLow > 0" x-text="`(${countLow})`" style="margin-left:4px"></span></button>
-      <button class="tab" :class="{ active: adminTab === 'fornitori' }"    @click="setAdminTab('fornitori')">🚚 Fornitori</button>
-      <button class="tab" :class="{ active: adminTab === 'report' }"       @click="setAdminTab('report')">📊 Report</button>
-      <button class="tab" :class="{ active: adminTab === 'storico' }"      @click="setAdminTab('storico')">📅 Storico</button>
-      <button class="tab" :class="{ active: adminTab === 'impostazioni' }" @click="setAdminTab('impostazioni')">⚙ Impostazioni</button>
-    </nav>
-  </template>
+  <!-- ============ RAIL: categorie ============ -->
+  <nav class="rail">
+    <div class="rail-section">Categorie</div>
+    <template x-for="cat in categories" :key="cat.id">
+      <button class="rail-item"
+              :class="{ active: view === 'products' && cat.id === activeCategory }"
+              @click="view = 'products'; activeCategory = cat.id">
+        <span class="ico" x-text="cat.icon"></span>
+        <span class="lbl" x-text="cat.name"></span>
+        <template x-if="countLowByCategory[cat.id] > 0">
+          <span class="badge" x-text="countLowByCategory[cat.id]"></span>
+        </template>
+      </button>
+    </template>
+  </nav>
 
   <!-- ============ MAIN ============ -->
   <main class="content">
 
-    <!-- ============================================================
-         STAFF DASHBOARD
-         ============================================================ -->
-    <template x-if="screen === 'staff'">
-      <div>
-        <!-- Day strip -->
-        <div class="daystrip">
-          <div class="daystrip-item date">
-            <div class="lbl">Oggi</div>
-            <div class="val" x-text="todayLabelShort"></div>
-          </div>
-          <div class="daystrip-item">
-            <div class="lbl">Uscite oggi</div>
-            <div class="val" x-text="todayStats.out"></div>
-          </div>
-          <div class="daystrip-item ok">
-            <div class="lbl">Ingressi oggi</div>
-            <div class="val" x-text="todayStats.in"></div>
-          </div>
-          <div class="daystrip-item warn">
-            <div class="lbl">Sotto soglia</div>
-            <div class="val" x-text="countLow"></div>
-          </div>
-          <div class="daystrip-item accent">
-            <div class="lbl">Ultimi 7g</div>
-            <div class="val" x-text="weekStats.out"></div>
-          </div>
-          <button class="btn-close-day" @click="askCloseDay()" title="Registra la giornata e chiudi il magazzino">
-            <span>Chiudi giornata</span>
-            <span class="arrow">→</span>
-          </button>
-        </div>
+    <!-- Tab bar: 4 viste sempre visibili + Impostazioni se admin -->
+    <div class="viewtabs">
+      <button class="viewtab" :class="{ active: view === 'products' }" @click="view = 'products'">
+        <span class="ico">📦</span><span>Prodotti</span>
+      </button>
+      <button class="viewtab" :class="{ active: view === 'storico' }" @click="view = 'storico'">
+        <span class="ico">📅</span><span>Storico</span>
+      </button>
+      <button class="viewtab" :class="{ active: view === 'avvisi' }" @click="view = 'avvisi'">
+        <span class="ico">⚠</span><span>Avvisi</span>
+        <template x-if="countLow > 0">
+          <span class="vt-badge" x-text="countLow"></span>
+        </template>
+      </button>
+      <button class="viewtab" :class="{ active: view === 'fornitori' }" @click="view = 'fornitori'">
+        <span class="ico">🚚</span><span>Fornitori</span>
+      </button>
+      <template x-if="adminUnlocked">
+        <button class="viewtab admin" :class="{ active: view === 'impostazioni' }" @click="view = 'impostazioni'">
+          <span class="ico">⚙</span><span>Impostazioni</span>
+        </button>
+      </template>
+    </div>
 
-        <!-- Section title -->
+    <!-- Day strip: solo nella vista Prodotti -->
+    <template x-if="view === 'products'">
+      <div class="daystrip">
+        <div class="daystrip-item date">
+          <div class="lbl">Oggi</div>
+          <div class="val" x-text="todayLabelShort"></div>
+        </div>
+        <div class="daystrip-item">
+          <div class="lbl">Uscite oggi</div>
+          <div class="val" x-text="todayStats.out"></div>
+        </div>
+        <div class="daystrip-item ok">
+          <div class="lbl">Ingressi oggi</div>
+          <div class="val" x-text="todayStats.in"></div>
+        </div>
+        <div class="daystrip-item warn">
+          <div class="lbl">Sotto soglia</div>
+          <div class="val" x-text="countLow"></div>
+        </div>
+        <button class="btn-close-day" @click="askCloseDay()" title="Registra la giornata">
+          <span>Chiudi giornata</span>
+          <span class="arrow">→</span>
+        </button>
+      </div>
+    </template>
+
+    <!-- ====== VISTA: PRODOTTI ====== -->
+    <template x-if="view === 'products'">
+      <div>
         <div class="section-title">
           <h2>
             <span x-text="activeCategoryObj?.icon"></span>
@@ -167,7 +164,11 @@
           </template>
         </div>
 
-        <!-- Urgent bar (visible when other categories have lows) -->
+        <div class="toolbar" style="padding:0 26px 14px;">
+          <button class="btn primary" @click="openNewProduct()">+ Nuovo prodotto</button>
+          <button class="btn" @click="openCategoryManager()">✏ Gestisci categorie</button>
+        </div>
+
         <template x-if="countLow > 0 && countLow > visibleLowCount">
           <div class="urgent-bar">
             <span class="sym">!!</span>
@@ -177,7 +178,6 @@
           </div>
         </template>
 
-        <!-- Product grid -->
         <template x-if="visibleProducts.length === 0">
           <div class="empty">— nessun prodotto in questa categoria —</div>
         </template>
@@ -188,9 +188,17 @@
                  :style="`--reveal-delay: ${Math.min(i, 24) * 25}ms`">
               <template x-if="isLow(prod)"><div class="card-warn">!</div></template>
 
+              <button class="card-edit" @click.stop="openEditProduct(prod)" title="Modifica prodotto">✎</button>
+
               <div class="card-info" @click="openQty(prod, 'out')">
                 <div class="card-cat" x-text="categoryById(prod.category)?.name"></div>
                 <div class="card-name" x-text="prod.name"></div>
+                <template x-if="adminUnlocked && (prod.costPrice > 0 || prod.salePrice > 0)">
+                  <div class="card-prices">
+                    <span><em>cost.</em> <span x-text="formatPrice(prod.costPrice)"></span></span>
+                    <span><em>vend.</em> <span x-text="formatPrice(prod.salePrice)"></span></span>
+                  </div>
+                </template>
                 <div class="card-stock-area">
                   <span class="card-stock"
                         :class="{ low: isLow(prod), zero: prod.currentStock <= 0 }"
@@ -200,13 +208,11 @@
               </div>
 
               <div class="card-actions">
-                <button class="card-act minus"
-                        @click="quickOut(prod)"
-                        :disabled="prod.currentStock <= 0">
+                <button class="card-act minus" @click="openQty(prod, 'out')" :disabled="prod.currentStock <= 0">
                   <span class="sym">−</span>
                   <small>uscita</small>
                 </button>
-                <button class="card-act plus" @click="quickIn(prod)">
+                <button class="card-act plus" @click="openQty(prod, 'in')">
                   <span class="sym">+</span>
                   <small>ingresso</small>
                 </button>
@@ -217,374 +223,217 @@
       </div>
     </template>
 
-    <!-- ============================================================
-         ADMIN PANELS
-         ============================================================ -->
-    <template x-if="screen === 'admin'">
-      <div class="admin-content">
+    <!-- ====== VISTA: STORICO ====== -->
+    <template x-if="view === 'storico'">
+      <div style="padding: 22px 24px 80px;">
+        <div class="section-title" style="padding:0 0 14px;">
+          <h2><span>📅</span> <em>Storico movimenti</em></h2>
+          <span class="meta">
+            <span x-text="filteredMovements.length"></span>
+            <span x-text="filteredMovements.length === 1 ? 'movimento' : 'movimenti'"></span>
+          </span>
+          <div class="rule"></div>
+        </div>
 
-        <!-- Inventario -->
-        <template x-if="adminTab === 'inventario'">
-          <div>
-            <div class="cat-pills">
-              <template x-for="cat in categories" :key="cat.id">
-                <button class="cat-pill" :class="{ active: cat.id === activeCategory }" @click="activeCategory = cat.id">
-                  <span class="ico" x-text="cat.icon"></span>
-                  <span x-text="cat.name"></span>
-                  <template x-if="countLowByCategory[cat.id] > 0">
-                    <span class="badge" x-text="countLowByCategory[cat.id]"></span>
-                  </template>
-                </button>
-              </template>
+        <div class="cat-pills">
+          <button class="cat-pill" :class="{ active: movementFilter.days === 1 }"    @click="movementFilter.days = 1">Oggi</button>
+          <button class="cat-pill" :class="{ active: movementFilter.days === 7 }"    @click="movementFilter.days = 7">7 giorni</button>
+          <button class="cat-pill" :class="{ active: movementFilter.days === 30 }"   @click="movementFilter.days = 30">30 giorni</button>
+          <button class="cat-pill" :class="{ active: movementFilter.days === 90 }"   @click="movementFilter.days = 90">90 giorni</button>
+          <button class="cat-pill" :class="{ active: movementFilter.days === 3650 }" @click="movementFilter.days = 3650">Tutto</button>
+        </div>
+        <div class="toolbar">
+          <select x-model="movementFilter.productId">
+            <option value="">Tutti i prodotti</option>
+            <template x-for="p in allActiveProducts" :key="p.id">
+              <option :value="p.id" x-text="p.name"></option>
+            </template>
+          </select>
+          <button class="btn" @click="exportMovementsCsv()">⬇ Esporta CSV</button>
+        </div>
+
+        <div class="row-list">
+          <div class="row head" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr 1fr auto;">
+            <div>Data</div>
+            <div>Prodotto</div>
+            <div>Tipo</div>
+            <div>Prima</div>
+            <div>Cambio</div>
+            <div>Dopo</div>
+            <div></div>
+          </div>
+          <template x-for="mv in filteredMovements" :key="mv.id">
+            <div class="row" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr 1fr auto;">
+              <div class="muted" x-text="formatTimestamp(mv.timestamp)"></div>
+              <div class="name" x-text="mv.productName"></div>
+              <div :class="{ danger: mv.type === 'out', ok: mv.type === 'in' }"
+                   x-text="mv.type === 'out' ? '↓ uscita' : mv.type === 'in' ? '↑ ingresso' : '✎ rettifica'"></div>
+              <div class="muted" x-text="(mv.stockAfter - mv.delta)"></div>
+              <div :style="mv.delta >= 0 ? 'color:var(--sage);font-weight:700' : 'color:var(--terra);font-weight:700'"
+                   x-text="(mv.delta >= 0 ? '+' : '') + mv.delta"></div>
+              <div style="font-weight:700" x-text="mv.stockAfter"></div>
+              <div><button class="btn small danger" @click="deleteMovement(mv)">Annulla</button></div>
             </div>
-            <div class="toolbar">
-              <button class="btn primary" @click="openNewProduct()">+ Nuovo prodotto</button>
+          </template>
+          <template x-if="filteredMovements.length === 0">
+            <div class="empty">Nessun movimento nel periodo selezionato.</div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- ====== VISTA: AVVISI ====== -->
+    <template x-if="view === 'avvisi'">
+      <div style="padding: 22px 24px 80px;">
+        <div class="section">
+          <h2>Prodotti sotto soglia</h2>
+          <p class="muted" x-text="countLow === 0 ? 'Tutto a posto: nessun prodotto sotto soglia.' : `${countLow} prodotti richiedono attenzione.`"></p>
+        </div>
+        <div class="row-list" x-show="countLow > 0">
+          <div class="row head">
+            <div>Prodotto</div>
+            <div class="col-hide-sm">Categoria</div>
+            <div>Scorta</div>
+            <div class="col-hide-sm">Soglia</div>
+            <div></div>
+          </div>
+          <template x-for="prod in lowStockProducts" :key="prod.id">
+            <div class="row danger">
+              <div class="name" x-text="prod.name"></div>
+              <div class="muted col-hide-sm" x-text="categoryById(prod.category)?.name || ''"></div>
+              <div x-text="prod.currentStock + ' ' + prod.unit"></div>
+              <div class="col-hide-sm" x-text="prod.minThreshold"></div>
+              <div><button class="btn small primary" @click="openQty(prod, 'in')">Rifornisci</button></div>
             </div>
+          </template>
+        </div>
+
+        <div class="section" style="margin-top:32px;">
+          <div class="flex-row">
+            <h2 class="no-margin" style="flex:1">Lista della spesa</h2>
+            <button class="btn primary" @click="exportShoppingList()" :disabled="countLow === 0">⬇ Esporta CSV</button>
+          </div>
+          <p class="muted">Prodotti sotto soglia, raggruppati per fornitore. Quantità suggerita = 2× soglia minima.</p>
+        </div>
+        <template x-if="countLow === 0">
+          <div class="empty">Nessun prodotto sotto soglia.</div>
+        </template>
+        <template x-for="(items, supplierName) in shoppingList" :key="supplierName">
+          <div class="section">
+            <h2 style="font-size:15px;color:var(--accent);font-style:italic;" x-text="supplierName"></h2>
             <div class="row-list">
-              <div class="row head">
+              <div class="row head" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
                 <div>Prodotto</div>
-                <div class="col-hide-sm">Unità</div>
-                <div>Scorta</div>
-                <div>Soglia min</div>
-                <div></div>
-              </div>
-              <template x-for="prod in visibleProducts" :key="prod.id">
-                <div class="row" :class="{ danger: isLow(prod) }">
-                  <div class="name" x-text="prod.name"></div>
-                  <div class="col-hide-sm muted" x-text="prod.unit"></div>
-                  <div><input type="number" :value="prod.currentStock" @change="updateStock(prod, $event.target.value)" min="0" /></div>
-                  <div><input type="number" :value="prod.minThreshold" @change="updateThreshold(prod, $event.target.value)" min="0" /></div>
-                  <div class="flex-row">
-                    <button class="btn small" @click="openEditProduct(prod)">Modifica</button>
-                    <button class="btn small danger" @click="archiveProduct(prod)">Archivia</button>
-                  </div>
-                </div>
-              </template>
-              <template x-if="visibleProducts.length === 0">
-                <div class="empty">Nessun prodotto in questa categoria.</div>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <!-- Rifornimenti (admin) -->
-        <template x-if="adminTab === 'rifornimenti'">
-          <div>
-            <div class="section">
-              <h2>Registra ingressi merce</h2>
-              <p class="muted">Tap su un prodotto per aggiungere quantità alla scorta. La modalità staff può aggiungere +1 al volo dalla schermata principale.</p>
-            </div>
-            <div class="cat-pills">
-              <template x-for="cat in categories" :key="cat.id">
-                <button class="cat-pill" :class="{ active: cat.id === activeCategory }" @click="activeCategory = cat.id">
-                  <span class="ico" x-text="cat.icon"></span>
-                  <span x-text="cat.name"></span>
-                </button>
-              </template>
-            </div>
-            <div class="grid">
-              <template x-for="prod in visibleProducts" :key="prod.id">
-                <div class="card">
-                  <div class="card-info" @click="openQty(prod, 'in')">
-                    <div class="card-cat" x-text="categoryById(prod.category)?.name"></div>
-                    <div class="card-name" x-text="prod.name"></div>
-                    <div class="card-stock-area">
-                      <span class="card-stock" x-text="prod.currentStock"></span>
-                      <span class="card-unit" x-text="prod.unit"></span>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <!-- Movimenti -->
-        <template x-if="adminTab === 'movimenti'">
-          <div>
-            <div class="cat-pills">
-              <button class="cat-pill" :class="{ active: movementFilter.days === 1 }"    @click="movementFilter.days = 1">Oggi</button>
-              <button class="cat-pill" :class="{ active: movementFilter.days === 7 }"    @click="movementFilter.days = 7">7 giorni</button>
-              <button class="cat-pill" :class="{ active: movementFilter.days === 30 }"   @click="movementFilter.days = 30">30 giorni</button>
-              <button class="cat-pill" :class="{ active: movementFilter.days === 90 }"   @click="movementFilter.days = 90">90 giorni</button>
-              <button class="cat-pill" :class="{ active: movementFilter.days === 3650 }" @click="movementFilter.days = 3650">Tutto</button>
-            </div>
-            <div class="toolbar">
-              <select x-model="movementFilter.productId">
-                <option value="">Tutti i prodotti</option>
-                <template x-for="p in allActiveProducts" :key="p.id">
-                  <option :value="p.id" x-text="p.name"></option>
-                </template>
-              </select>
-              <button class="btn" @click="exportMovementsCsv()">⬇ Esporta CSV</button>
-            </div>
-            <div class="row-list">
-              <div class="row head" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr auto;">
-                <div>Data</div>
-                <div>Prodotto</div>
-                <div>Tipo</div>
-                <div>Quantità</div>
-                <div>Scorta dopo</div>
-                <div></div>
-              </div>
-              <template x-for="mv in filteredMovements" :key="mv.id">
-                <div class="row" style="grid-template-columns: 1.4fr 2fr 1fr 1fr 1fr auto;">
-                  <div class="muted" x-text="formatTimestamp(mv.timestamp)"></div>
-                  <div class="name" x-text="mv.productName"></div>
-                  <div :class="{ danger: mv.type === 'out', ok: mv.type === 'in' }"
-                       x-text="mv.type === 'out' ? '↓ uscita' : mv.type === 'in' ? '↑ ingresso' : '✎ rettifica'"></div>
-                  <div x-text="mv.quantity"></div>
-                  <div x-text="mv.stockAfter"></div>
-                  <div><button class="btn small danger" @click="deleteMovement(mv)">Annulla</button></div>
-                </div>
-              </template>
-              <template x-if="filteredMovements.length === 0">
-                <div class="empty">Nessun movimento nel periodo selezionato.</div>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <!-- Avvisi -->
-        <template x-if="adminTab === 'avvisi'">
-          <div>
-            <div class="section">
-              <h2>Prodotti sotto soglia</h2>
-              <p class="muted" x-text="countLow === 0 ? 'Tutto a posto: nessun prodotto sotto soglia.' : `${countLow} prodotti richiedono attenzione.`"></p>
-            </div>
-            <div class="row-list" x-show="countLow > 0">
-              <div class="row head">
-                <div>Prodotto</div>
-                <div>Categoria</div>
                 <div>Scorta</div>
                 <div>Soglia</div>
-                <div></div>
+                <div>Da ordinare</div>
               </div>
-              <template x-for="prod in lowStockProducts" :key="prod.id">
-                <div class="row danger">
-                  <div class="name" x-text="prod.name"></div>
-                  <div class="muted" x-text="categoryById(prod.category)?.name || ''"></div>
-                  <div x-text="prod.currentStock + ' ' + prod.unit"></div>
-                  <div x-text="prod.minThreshold"></div>
-                  <div><button class="btn small primary" @click="openQty(prod, 'in')">Rifornisci</button></div>
+              <template x-for="it in items" :key="it.productId">
+                <div class="row" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
+                  <div class="name" x-text="it.productName"></div>
+                  <div x-text="it.currentStock + ' ' + it.unit"></div>
+                  <div x-text="it.minThreshold"></div>
+                  <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;" x-text="it.toOrder + ' ' + it.unit"></div>
                 </div>
               </template>
             </div>
           </div>
         </template>
+      </div>
+    </template>
 
-        <!-- Fornitori -->
-        <template x-if="adminTab === 'fornitori'">
-          <div>
-            <div class="section">
+    <!-- ====== VISTA: FORNITORI ====== -->
+    <template x-if="view === 'fornitori'">
+      <div style="padding: 22px 24px 80px;">
+        <div class="section">
+          <div class="flex-row">
+            <h2 class="no-margin" style="flex:1">Fornitori</h2>
+            <button class="btn primary" @click="openNewSupplier()">+ Nuovo fornitore</button>
+          </div>
+        </div>
+        <div class="row-list">
+          <div class="row head" style="grid-template-columns: 2fr 1fr 1fr auto;">
+            <div>Nome</div>
+            <div class="col-hide-sm">Telefono</div>
+            <div class="col-hide-sm">Email</div>
+            <div></div>
+          </div>
+          <template x-for="s in suppliers" :key="s.id">
+            <div class="row" style="grid-template-columns: 2fr 1fr 1fr auto;">
+              <div class="name" x-text="s.name"></div>
+              <div class="col-hide-sm muted" x-text="s.phone || '—'"></div>
+              <div class="col-hide-sm muted" x-text="s.email || '—'"></div>
               <div class="flex-row">
-                <h2 class="no-margin" style="flex:1">Fornitori</h2>
-                <button class="btn primary" @click="openNewSupplier()">+ Nuovo fornitore</button>
+                <button class="btn small" @click="openEditSupplier(s)">Modifica</button>
+                <button class="btn small danger" @click="deleteSupplier(s)">Elimina</button>
               </div>
             </div>
-            <div class="row-list">
-              <div class="row head" style="grid-template-columns: 2fr 1fr 1fr auto;">
-                <div>Nome</div>
-                <div class="col-hide-sm">Telefono</div>
-                <div class="col-hide-sm">Email</div>
-                <div></div>
-              </div>
-              <template x-for="s in suppliers" :key="s.id">
-                <div class="row" style="grid-template-columns: 2fr 1fr 1fr auto;">
-                  <div class="name" x-text="s.name"></div>
-                  <div class="col-hide-sm muted" x-text="s.phone || '—'"></div>
-                  <div class="col-hide-sm muted" x-text="s.email || '—'"></div>
-                  <div class="flex-row">
-                    <button class="btn small" @click="openEditSupplier(s)">Modifica</button>
-                    <button class="btn small danger" @click="deleteSupplier(s)">Elimina</button>
-                  </div>
-                </div>
-              </template>
-              <template x-if="suppliers.length === 0">
-                <div class="empty">Nessun fornitore inserito.</div>
-              </template>
-            </div>
+          </template>
+          <template x-if="suppliers.length === 0">
+            <div class="empty">Nessun fornitore inserito.</div>
+          </template>
+        </div>
+      </div>
+    </template>
 
-            <div class="section" style="margin-top: 32px;">
-              <div class="flex-row">
-                <h2 class="no-margin" style="flex:1">Lista della spesa</h2>
-                <button class="btn primary" @click="exportShoppingList()" :disabled="countLow === 0">⬇ Esporta CSV</button>
-              </div>
-              <p class="muted">Prodotti sotto soglia, raggruppati per fornitore. Quantità suggerita = 2× soglia minima.</p>
-            </div>
-            <template x-if="countLow === 0">
-              <div class="empty">Nessun prodotto sotto soglia.</div>
-            </template>
-            <template x-for="(items, supplierName) in shoppingList" :key="supplierName">
-              <div class="section">
-                <h2 style="font-size:15px;color:var(--accent);font-style:italic;" x-text="supplierName"></h2>
-                <div class="row-list">
-                  <div class="row head" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
-                    <div>Prodotto</div>
-                    <div>Scorta</div>
-                    <div>Soglia</div>
-                    <div>Da ordinare</div>
-                  </div>
-                  <template x-for="it in items" :key="it.productId">
-                    <div class="row" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
-                      <div class="name" x-text="it.productName"></div>
-                      <div x-text="it.currentStock + ' ' + it.unit"></div>
-                      <div x-text="it.minThreshold"></div>
-                      <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;" x-text="it.toOrder + ' ' + it.unit"></div>
-                    </div>
-                  </template>
-                </div>
-              </div>
-            </template>
-          </div>
+    <!-- ====== VISTA: IMPOSTAZIONI (solo admin) ====== -->
+    <template x-if="view === 'impostazioni' && adminUnlocked">
+      <div style="padding: 22px 24px 80px;">
+        <template x-if="showBackupReminder">
+          <div class="banner">⚠ Sono passati più di 7 giorni dall'ultimo backup. Ti consigliamo di esportare ora.</div>
         </template>
 
-        <!-- Report -->
-        <template x-if="adminTab === 'report'">
-          <div>
-            <div class="cat-pills">
-              <button class="cat-pill" :class="{ active: reportRange === 7 }"  @click="reportRange = 7; renderReportChart()">7 giorni</button>
-              <button class="cat-pill" :class="{ active: reportRange === 30 }" @click="reportRange = 30; renderReportChart()">30 giorni</button>
-              <button class="cat-pill" :class="{ active: reportRange === 90 }" @click="reportRange = 90; renderReportChart()">90 giorni</button>
-            </div>
-            <div class="stat-grid">
-              <div class="stat danger">
-                <div class="label">Uscite nel periodo</div>
-                <div class="value" x-text="reportData.totals.out"></div>
-              </div>
-              <div class="stat ok">
-                <div class="label">Ingressi nel periodo</div>
-                <div class="value" x-text="reportData.totals.in"></div>
-              </div>
-              <div class="stat">
-                <div class="label">Movimenti totali</div>
-                <div class="value" x-text="reportData.totals.count"></div>
-              </div>
-              <div class="stat" :class="{ warn: reportData.weekly.delta > 0, danger: reportData.weekly.delta < -20 }">
-                <div class="label">Settimana vs precedente</div>
-                <div class="value">
-                  <span x-text="reportData.weekly.thisWeek"></span>
-                  <small style="font-size:14px;font-weight:500;color:var(--text-dim);font-family:var(--font-body);" x-show="reportData.weekly.delta !== null">
-                    (<span x-text="(reportData.weekly.delta > 0 ? '+' : '') + reportData.weekly.delta.toFixed(0) + '%'"></span>)
-                  </small>
-                </div>
-              </div>
-            </div>
-            <div class="chart-box">
-              <h2>Uscite per giorno</h2>
-              <canvas x-ref="reportCanvas" height="280"></canvas>
-            </div>
-            <div class="section">
-              <h2>Top prodotti consumati</h2>
-              <div class="row-list">
-                <div class="row head" style="grid-template-columns: auto 2fr 1fr;">
-                  <div>#</div>
-                  <div>Prodotto</div>
-                  <div>Quantità</div>
-                </div>
-                <template x-for="(t, i) in reportData.top" :key="t.productId">
-                  <div class="row" style="grid-template-columns: auto 2fr 1fr;">
-                    <div class="muted" style="font-family:var(--font-mono);" x-text="String(i + 1).padStart(2,'0')"></div>
-                    <div class="name" x-text="t.name"></div>
-                    <div style="font-family:var(--font-mono);font-variant-numeric:tabular-nums;" x-text="t.total"></div>
-                  </div>
-                </template>
-                <template x-if="reportData.top.length === 0">
-                  <div class="empty">Nessuna uscita registrata nel periodo.</div>
-                </template>
-              </div>
-            </div>
+        <div class="section">
+          <h2>Backup dati</h2>
+          <p class="muted">Salva una copia completa di prodotti, scorte, movimenti e fornitori. Il PIN admin <strong>non</strong> è incluso.</p>
+          <div class="flex-row" style="gap:10px;">
+            <button class="btn primary" @click="doExportBackup()">⬇ Esporta backup JSON</button>
+            <button class="btn" @click="triggerImport()">⬆ Importa backup JSON</button>
+            <input type="file" accept="application/json" x-ref="importInput" @change="handleImport($event)" style="display:none" />
           </div>
-        </template>
+        </div>
 
-        <!-- Storico chiusure giornaliere -->
-        <template x-if="adminTab === 'storico'">
-          <div>
-            <div class="section">
-              <h2>Storico chiusure giornata</h2>
-              <p class="muted">Ogni chiusura registra uscite, ingressi, alert e snapshot della scorta. Si può riaprire una giornata per modificarla.</p>
-            </div>
-            <template x-if="dailyCloses.length === 0">
-              <div class="empty">Nessuna giornata chiusa finora.</div>
-            </template>
-            <div class="row-list" x-show="dailyCloses.length > 0">
-              <div class="daily-close-row head">
-                <div>Data</div>
-                <div>Uscite</div>
-                <div>Ingressi</div>
-                <div>Sotto soglia</div>
-                <div>Movimenti</div>
-                <div></div>
-              </div>
-              <template x-for="dc in dailyCloses" :key="dc.date">
-                <div class="daily-close-row">
-                  <div class="date" x-text="formatCloseDate(dc.date)"></div>
-                  <div class="num" style="color: var(--terra)" x-text="dc.out"></div>
-                  <div class="num" style="color: var(--sage)" x-text="dc.in"></div>
-                  <div class="num" :style="dc.lowCount > 0 ? 'color: var(--gold)' : 'color: var(--text-mute)'" x-text="dc.lowCount"></div>
-                  <div class="num muted" x-text="dc.movementCount"></div>
-                  <div></div>
-                </div>
-              </template>
-            </div>
+        <div class="section">
+          <h2>PIN admin</h2>
+          <p class="muted">Da 4 a 6 cifre. Modifica richiede il PIN attuale.</p>
+          <button class="btn" @click="openChangePin()">Cambia PIN</button>
+        </div>
+
+        <div class="section">
+          <h2>Timeout inattività</h2>
+          <p class="muted">Dopo questo tempo senza attività, l'admin si blocca automaticamente. Attuale: <strong x-text="(inactivityTimeoutMs/1000).toFixed(0) + ' secondi'"></strong>.</p>
+          <div class="flex-row" style="gap:10px;">
+            <input type="number" :value="(inactivityTimeoutMs/1000).toFixed(0)" min="30" max="600" step="10"
+                   @change="updateTimeout($event.target.value)"
+                   style="background:var(--bg-elev-2);border:1px solid var(--line);color:var(--text);padding:10px 14px;border-radius:10px;width:120px;outline:none;font-family:var(--font-mono);" />
+            <span class="muted">secondi (min 30, max 600)</span>
           </div>
-        </template>
+        </div>
 
-        <!-- Impostazioni -->
-        <template x-if="adminTab === 'impostazioni'">
-          <div>
-            <template x-if="showBackupReminder">
-              <div class="banner">⚠ Sono passati più di 7 giorni dall'ultimo backup. Ti consigliamo di esportare ora.</div>
-            </template>
+        <div class="section">
+          <h2>Aggiornamento app</h2>
+          <p class="muted">Se hai modificato i file e vuoi forzare il reload pulendo la cache.</p>
+          <button class="btn" @click="forceUpdate()">↻ Forza aggiornamento</button>
+        </div>
 
-            <div class="section">
-              <h2>Backup dati</h2>
-              <p class="muted">Salva una copia completa di prodotti, scorte, movimenti e fornitori. Il PIN admin <strong>non</strong> è incluso.</p>
-              <div class="flex-row" style="gap:10px;">
-                <button class="btn primary" @click="doExportBackup()">⬇ Esporta backup JSON</button>
-                <button class="btn" @click="triggerImport()">⬆ Importa backup JSON</button>
-                <input type="file" accept="application/json" x-ref="importInput" @change="handleImport($event)" style="display:none" />
-              </div>
-            </div>
+        <div class="section">
+          <h2>Azzera dati</h2>
+          <p class="muted">Cancella tutti i prodotti, movimenti e fornitori, e ripopola con il catalogo iniziale. <strong>PIN e impostazioni restano.</strong></p>
+          <button class="btn" style="background:var(--terra);color:#fff;border-color:transparent" @click="resetAllData()">⚠ Azzera tutti i dati</button>
+        </div>
 
-            <div class="section">
-              <h2>PIN admin</h2>
-              <p class="muted">Da 4 a 6 cifre. Modifica richiede il PIN attuale.</p>
-              <button class="btn" @click="openChangePin()">Cambia PIN</button>
-            </div>
-
-            <div class="section">
-              <h2>Timeout inattività</h2>
-              <p class="muted">Dopo questo tempo senza attività, l'app torna automaticamente alla modalità staff. Attuale: <strong x-text="(inactivityTimeoutMs/1000).toFixed(0) + ' secondi'"></strong>.</p>
-              <div class="flex-row" style="gap:10px;">
-                <input type="number" :value="(inactivityTimeoutMs/1000).toFixed(0)" min="30" max="600" step="10"
-                       @change="updateTimeout($event.target.value)"
-                       style="background:var(--bg-elev-2);border:1px solid var(--line);color:var(--text);padding:10px 14px;border-radius:10px;width:120px;outline:none;font-family:var(--font-mono);" />
-                <span class="muted">secondi (min 30, max 600)</span>
-              </div>
-            </div>
-
-            <div class="section">
-              <h2>Aggiornamento app</h2>
-              <p class="muted">Se hai modificato i file e vuoi forzare il reload pulendo la cache.</p>
-              <button class="btn" @click="forceUpdate()">↻ Forza aggiornamento</button>
-            </div>
-
-            <div class="section">
-              <h2>Info app</h2>
-              <p class="muted">Magazzino Pizzeria · PWA locale · v1.0<br>
-              I dati sono memorizzati solo su questo iPad. Esporta regolarmente backup per non perderli.</p>
-            </div>
-          </div>
-        </template>
-
+        <div class="section">
+          <h2>Info app</h2>
+          <p class="muted">Magazzino Pizzeria Deposito Bagagli · PWA locale · v2.0<br>
+          I dati sono memorizzati solo su questo iPad. Esporta regolarmente backup per non perderli.</p>
+        </div>
       </div>
     </template>
 
   </main>
 
   <!-- ============================================================
-       DIALOG: Quantità (unificato out / in)
+       DIALOG: Quantità
        ============================================================ -->
   <template x-if="qtyDialog.open">
     <div class="overlay" @click.self="qtyCancel()">
@@ -613,9 +462,13 @@
           <button @click="qtySet(5)">5</button>
           <button @click="qtySet(10)">10</button>
           <button @click="qtySet(20)">20</button>
+          <button @click="qtySet(50)">50</button>
+          <button @click="qtySet(100)">100</button>
+          <button class="step-down" @click="qtyAdd(-5)">−5</button>
           <button class="step-down" @click="qtyAdd(-1)">−1</button>
           <button class="step-up" @click="qtyAdd(1)">+1</button>
           <button class="step-up" @click="qtyAdd(5)">+5</button>
+          <button class="step-up" @click="qtyAdd(10)">+10</button>
         </div>
 
         <div class="qty-actions">
@@ -623,6 +476,64 @@
           <button class="btn" :class="qtyDialog.mode === 'out' ? 'danger' : 'ok'" @click="qtyConfirm()">
             Conferma <span x-text="qtyDialog.mode === 'out' ? 'uscita' : 'ingresso'"></span>
           </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================
+       DIALOG: Gestione categorie
+       ============================================================ -->
+  <template x-if="categoryManager.open">
+    <div class="overlay" @click.self="closeCategoryManager()">
+      <div class="dialog" style="max-width:560px">
+        <h2>Gestisci categorie</h2>
+        <p class="muted" style="margin:-6px 0 14px">Tieni premuto ⋮⋮ per riordinare. Rinomina, cambia emoji o elimina.</p>
+
+        <div class="cat-manager-list">
+          <template x-for="cat in categories" :key="cat.id">
+            <div class="cat-manager-row" :data-cat-id="cat.id">
+              <span class="drag-handle" title="Trascina">⋮⋮</span>
+              <span class="cat-manager-icon" x-text="cat.icon || '📦'"></span>
+              <span class="cat-manager-name" x-text="cat.name"></span>
+              <span class="cat-manager-count muted" x-text="(products.filter(p => p.category === cat.id && !p.archived).length) + ' prodotti'"></span>
+              <button class="btn small" @click="openEditCategory(cat)">Modifica</button>
+              <button class="btn small danger" @click="deleteCategory(cat)">Elimina</button>
+            </div>
+          </template>
+        </div>
+
+        <div class="flex-row" style="margin-top:18px;gap:10px;">
+          <button class="btn primary" @click="openNewCategory()">+ Nuova categoria</button>
+          <button class="btn" style="margin-left:auto" @click="closeCategoryManager()">Chiudi</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================
+       DIALOG: Nuova/modifica categoria
+       ============================================================ -->
+  <template x-if="categoryDialog.open">
+    <div class="overlay" @click.self="categoryDialog.open = false">
+      <div class="dialog" style="max-width:440px">
+        <h2>
+          <span x-show="categoryDialog.isNew">Nuova categoria</span>
+          <span x-show="!categoryDialog.isNew">Modifica categoria</span>
+        </h2>
+        <div class="form-grid">
+          <label>
+            <span>Nome</span>
+            <input type="text" x-model="categoryDialog.form.name" placeholder="es. Cucina" />
+          </label>
+          <label>
+            <span>Emoji / Icona</span>
+            <input type="text" x-model="categoryDialog.form.icon" maxlength="4" placeholder="🍕" />
+          </label>
+        </div>
+        <div class="flex-row" style="gap:10px;margin-top:14px;">
+          <button class="btn" @click="categoryDialog.open = false">Annulla</button>
+          <button class="btn primary" @click="saveCategory()">Salva</button>
         </div>
       </div>
     </div>
@@ -637,14 +548,14 @@
         <h2>
           <template x-if="pinDialog.mode === 'setup' && pinDialog.step === 1">Imposta PIN admin</template>
           <template x-if="pinDialog.mode === 'setup' && pinDialog.step === 2">Conferma PIN</template>
-          <template x-if="pinDialog.mode === 'login'">Accesso admin</template>
+          <template x-if="pinDialog.mode === 'login'">Sblocca admin</template>
           <template x-if="pinDialog.mode === 'change' && pinDialog.step === 1">PIN attuale</template>
           <template x-if="pinDialog.mode === 'change' && pinDialog.step === 2">Nuovo PIN</template>
           <template x-if="pinDialog.mode === 'change' && pinDialog.step === 3">Conferma nuovo PIN</template>
         </h2>
         <div class="sub">
-          <template x-if="pinDialog.mode === 'setup'">Scegli un PIN da 4 a 6 cifre. Servirà per accedere alla modalità admin.</template>
-          <template x-if="pinDialog.mode === 'login'">Inserisci il PIN per modificare l'inventario.</template>
+          <template x-if="pinDialog.mode === 'setup'">Scegli un PIN da 4 a 6 cifre. Servirà per vedere i prezzi e accedere alle impostazioni.</template>
+          <template x-if="pinDialog.mode === 'login'">Inserisci il PIN per vedere i prezzi.</template>
           <template x-if="pinDialog.mode === 'change'">Cambio PIN admin</template>
         </div>
         <div class="pin-display">
@@ -695,11 +606,21 @@
             </select>
           </label>
           <label>Scorta attuale
-            <input type="number" x-model.number="productDialog.form.currentStock" min="0" />
+            <input type="number" x-model.number="productDialog.form.currentStock" min="0" step="0.5" />
           </label>
           <label>Soglia minima
             <input type="number" x-model.number="productDialog.form.minThreshold" min="0" />
           </label>
+          <template x-if="adminUnlocked">
+            <label>Prezzo costo (€)
+              <input type="number" x-model.number="productDialog.form.costPrice" min="0" step="0.01" />
+            </label>
+          </template>
+          <template x-if="adminUnlocked">
+            <label>Prezzo vendita (€)
+              <input type="number" x-model.number="productDialog.form.salePrice" min="0" step="0.01" />
+            </label>
+          </template>
           <label class="full">Fornitore (opzionale)
             <select x-model="productDialog.form.supplierId">
               <option value="">— nessuno —</option>
@@ -710,6 +631,9 @@
           </label>
         </div>
         <div class="dialog-actions">
+          <template x-if="!productDialog.isNew">
+            <button class="btn danger" style="margin-right:auto" @click="archiveProduct(productDialog.original)">Archivia</button>
+          </template>
           <button class="btn" @click="productDialog.open = false">Annulla</button>
           <button class="btn primary" @click="saveProduct()">Salva</button>
         </div>
@@ -765,7 +689,7 @@
   </template>
 
   <!-- ============================================================
-       DIALOG: Conferma chiusura giornata
+       DIALOG: Chiudi giornata
        ============================================================ -->
   <template x-if="closeConfirmOpen">
     <div class="overlay" @click.self="cancelCloseDay()">
@@ -798,7 +722,7 @@
   </template>
 
   <!-- ============================================================
-       SPLASH: Giornata chiusa (blocker fullscreen)
+       SPLASH: Giornata chiusa
        ============================================================ -->
   <template x-if="dayClosed && lastCloseSummary">
     <div class="day-splash">
@@ -868,8 +792,8 @@
     });
   }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 </body>
 </html>

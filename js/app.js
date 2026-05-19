@@ -1,24 +1,26 @@
-// Stato principale dell'app Alpine — "Cucina" redesign
+// Stato Alpine — versione semplificata.
+// Una sola interfaccia per tutti. L'admin (PIN) sblocca solo:
+//  - la visibilità dei prezzi (costo + vendita) nelle card e nel form prodotto
+//  - l'accesso alla tab Impostazioni (backup, PIN, timeout, azzera)
+// Tutto il resto (modificare prodotti, scorte, soglie, categorie, fornitori,
+// annullare movimenti) è disponibile a tutti.
+
 import {
   openDb, seedIfEmpty,
-  getAll, get, put, remove,
+  getAll, get, put, remove, clear, bulkPut,
   getSetting, setSetting,
   recordMovement, undoMovement, newId,
 } from './db.js';
-import { CATEGORIES, UNITS } from './seed.js';
 import {
-  hasPin, setPin, verifyPin, changePin,
+  hasPin, setPin, verifyPin,
   startInactivityTimer, stopInactivityTimer, remainingMs,
 } from './auth.js';
 import {
-  exportBackup, exportMovementsCsv, exportShoppingListCsv, restoreFromJson, downloadBlob,
+  exportBackup, exportMovementsCsv, exportShoppingListCsv, restoreFromJson,
 } from './export.js';
-import {
-  dailySeries, topProducts, totals, compareWeekly, lowStock, filterRange,
-} from './reports.js';
+import { lowStock } from './reports.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-let chartInstance = null;
 
 function startOfToday() {
   const d = new Date();
@@ -34,22 +36,32 @@ function todayKey() {
   return `${y}-${m}-${day}`;
 }
 
+function formatPrice(v) {
+  const n = Number(v) || 0;
+  return n.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
+}
+
 export function initApp() {
   return {
     // ====== Stato ======
     ready: false,
     setupMode: false,
-    screen: 'staff',
-    adminTab: 'inventario',
+
+    // Sblocco admin: gated solo i prezzi e la tab Impostazioni
+    adminUnlocked: false,
+    adminRemainingSec: 0,
+    _countdownTimer: null,
+
+    // Vista corrente
+    view: 'products', // 'products' | 'storico' | 'avvisi' | 'fornitori' | 'impostazioni'
     activeCategory: 'acque',
 
     theme: 'dark',
 
     dayClosed: false,
     lastCloseSummary: null,
-    dailyCloses: [],
     closeConfirmOpen: false,
-    dayStartedAt: 0,    // timestamp di inizio giornata logica (>= mezzanotte)
+    dayStartedAt: 0,
 
     categories: [],
     products: [],
@@ -57,19 +69,17 @@ export function initApp() {
     suppliers: [],
 
     inactivityTimeoutMs: 120000,
-    adminRemainingSec: 0,
-    _countdownTimer: null,
     showBackupReminder: false,
 
     // Ricerca
     searchQuery: '',
     searchOpen: false,
 
-    // Dialog quantità (unificato out/in)
+    // Dialog quantità
     qtyDialog: { open: false, product: null, qty: 1, mode: 'out' },
 
-    // Pulse animation per card
-    pulseState: {},  // { productId: 'minus' | 'plus' }
+    // Pulse animation
+    pulseState: {},
 
     // Toast
     toasts: [],
@@ -80,7 +90,11 @@ export function initApp() {
     // Dialog prodotto
     productDialog: {
       open: false, isNew: true, original: null,
-      form: { id: '', name: '', category: '', unit: 'bottiglia', currentStock: 0, minThreshold: 2, supplierId: '' }
+      form: {
+        id: '', name: '', category: '', unit: 'bottiglia',
+        currentStock: 0, minThreshold: 2, costPrice: 0, salePrice: 0,
+        supplierId: '',
+      }
     },
 
     // Dialog fornitore
@@ -89,12 +103,18 @@ export function initApp() {
       form: { id: '', name: '', phone: '', email: '', note: '' }
     },
 
-    // Dialog generico conferma
+    // Conferma generica
     confirmDialog: { open: false, title: '', message: '', onConfirm: null, danger: false },
 
-    // Filtri admin
+    // Gestione categorie
+    categoryManager: { open: false },
+    categoryDialog: {
+      open: false, isNew: true, original: null,
+      form: { id: '', name: '', icon: '' },
+    },
+
+    // Filtri movimenti
     movementFilter: { productId: '', days: 7 },
-    reportRange: 7,
 
     // ====== Init ======
     async init() {
@@ -125,16 +145,10 @@ export function initApp() {
       this.theme = t;
       document.documentElement.dataset.theme = t;
     },
-    async setTheme(t) {
-      this.theme = t;
-      document.documentElement.dataset.theme = t;
-      await setSetting('theme', t);
-      if (this.screen === 'admin' && this.adminTab === 'report') {
-        this.renderReportChart();
-      }
-    },
     async toggleTheme() {
-      await this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
+      this.theme = this.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = this.theme;
+      await setSetting('theme', this.theme);
     },
 
     // ====== Chiusura giornata ======
@@ -142,15 +156,10 @@ export function initApp() {
       const today = todayKey();
       const todayClose = await get('dailyCloses', today);
       this.dayStartedAt = await getSetting('dayStartedAt', 0);
-
-      // Lo splash di chiusura compare solo se esiste una chiusura per oggi
-      // E NON abbiamo già "aperto una nuova giornata" dopo quella chiusura.
       const advancedPast = todayClose && this.dayStartedAt > todayClose.closedAt;
       this.dayClosed = !!todayClose && !advancedPast;
       this.lastCloseSummary = todayClose || null;
-      this.dailyCloses = (await getAll('dailyCloses')).sort((a, b) => b.date.localeCompare(a.date));
 
-      // Detect "fresh new day": il giorno calendario è cambiato e ieri era chiuso
       const lastSeen = await getSetting('lastSeenDate', null);
       if (lastSeen && lastSeen !== today && !this.dayClosed) {
         const prevClose = await get('dailyCloses', lastSeen);
@@ -199,37 +208,28 @@ export function initApp() {
       };
       try {
         await put('dailyCloses', summary);
-        // Verifica esplicita che il record sia stato scritto
         const saved = await get('dailyCloses', date);
         if (!saved) throw new Error('Record non trovato dopo il salvataggio');
       } catch (err) {
         this.closeConfirmOpen = false;
-        alert('Errore salvataggio chiusura giornata: ' + err.message + '\nProva a ricaricare la pagina.');
+        alert('Errore salvataggio chiusura giornata: ' + err.message);
         return;
       }
       this.closeConfirmOpen = false;
       this.dayClosed = true;
       this.lastCloseSummary = summary;
       await this._loadDayCloseState();
-      this._pushToast({ kind: 'info', qtyLabel: '✓', productName: 'Giornata registrata nello storico' });
+      this._pushToast({ kind: 'info', qtyLabel: '✓', productName: 'Giornata registrata' });
     },
 
-    // Apri una giornata nuova (preservando la chiusura precedente nello storico).
-    // I contatori uscite/ingressi ripartono da zero.
     async startNewDay() {
       const now = Date.now();
       await setSetting('dayStartedAt', now);
       this.dayStartedAt = now;
       this.dayClosed = false;
       await this._loadDayCloseState();
-      this._pushToast({
-        kind: 'info',
-        qtyLabel: '☀',
-        productName: 'Nuova giornata aperta · contatori azzerati',
-      });
     },
 
-    // Annulla la chiusura: rimuove il record di chiusura, contatori restano.
     async undoCloseDay() {
       const date = todayKey();
       await remove('dailyCloses', date);
@@ -241,10 +241,6 @@ export function initApp() {
     formatCloseDate(dateStr) {
       const d = new Date(dateStr + 'T12:00:00');
       return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    },
-    formatCloseDateShort(dateStr) {
-      const d = new Date(dateStr + 'T12:00:00');
-      return d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
     },
 
     async reloadAll() {
@@ -278,15 +274,19 @@ export function initApp() {
       return `${wd} ${day} ${mon}`;
     },
 
+    formatPrice,
+
     // ====== Derived ======
     get visibleProducts() {
       return this.products
         .filter((p) => !p.archived && p.category === this.activeCategory)
-        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
+        .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.name.localeCompare(b.name, 'it'));
     },
 
     get allActiveProducts() {
-      return this.products.filter((p) => !p.archived).sort((a, b) => a.name.localeCompare(b.name, 'it'));
+      return this.products
+        .filter((p) => !p.archived)
+        .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.name.localeCompare(b.name, 'it'));
     },
 
     get searchResults() {
@@ -297,21 +297,13 @@ export function initApp() {
         .slice(0, 8);
     },
 
-    get lowStockProducts() {
-      return lowStock(this.products);
-    },
-
+    get lowStockProducts() { return lowStock(this.products); },
     get countLow() { return this.lowStockProducts.length; },
-
-    get visibleLowCount() {
-      return this.visibleProducts.filter((p) => this.isLow(p)).length;
-    },
+    get visibleLowCount() { return this.visibleProducts.filter((p) => this.isLow(p)).length; },
 
     get countLowByCategory() {
       const map = {};
-      for (const p of this.lowStockProducts) {
-        map[p.category] = (map[p.category] || 0) + 1;
-      }
+      for (const p of this.lowStockProducts) map[p.category] = (map[p.category] || 0) + 1;
       return map;
     },
 
@@ -319,7 +311,6 @@ export function initApp() {
       return this.categories.find((c) => c.id === this.activeCategory);
     },
 
-    // Inizio giornata logica: max(inizio calendario, momento riapertura manuale)
     get dayStart() {
       return Math.max(this.dayStartedAt || 0, startOfToday());
     },
@@ -335,16 +326,6 @@ export function initApp() {
       return { out, in: inn };
     },
 
-    get weekStats() {
-      const cutoff = Date.now() - 7 * DAY_MS;
-      let out = 0;
-      for (const m of this.movements) {
-        if (m.timestamp < cutoff) continue;
-        if (m.type === 'out') out += m.quantity;
-      }
-      return { out };
-    },
-
     productById(id) { return this.products.find((p) => p.id === id); },
     categoryById(id) { return this.categories.find((c) => c.id === id); },
     supplierById(id) { return this.suppliers.find((s) => s.id === id); },
@@ -357,37 +338,7 @@ export function initApp() {
 
     jumpToFirstLow() {
       const firstLow = this.lowStockProducts[0];
-      if (firstLow) this.activeCategory = firstLow.category;
-    },
-
-    // ====== Quick actions (staff fast lane) ======
-    async quickOut(product) {
-      if (product.currentStock <= 0) return;
-      const mv = await recordMovement({
-        productId: product.id, quantity: 1, type: 'out', userMode: this.screen,
-      });
-      this._triggerPulse(product.id, 'minus');
-      await this.reloadAll();
-      this._pushToast({
-        kind: 'out',
-        qtyLabel: '−1 ' + product.unit,
-        productName: product.name,
-        movementId: mv.id,
-      });
-    },
-
-    async quickIn(product) {
-      const mv = await recordMovement({
-        productId: product.id, quantity: 1, type: 'in', userMode: this.screen,
-      });
-      this._triggerPulse(product.id, 'plus');
-      await this.reloadAll();
-      this._pushToast({
-        kind: 'in',
-        qtyLabel: '+1 ' + product.unit,
-        productName: product.name,
-        movementId: mv.id,
-      });
+      if (firstLow) { this.view = 'products'; this.activeCategory = firstLow.category; }
     },
 
     _triggerPulse(productId, kind) {
@@ -411,7 +362,8 @@ export function initApp() {
       const { product, qty, mode } = this.qtyDialog;
       if (!product || qty < 1) return;
       const mv = await recordMovement({
-        productId: product.id, quantity: qty, type: mode, userMode: this.screen,
+        productId: product.id, quantity: qty, type: mode,
+        userMode: this.adminUnlocked ? 'admin' : 'staff',
       });
       this.qtyDialog.open = false;
       this._triggerPulse(product.id, mode === 'out' ? 'minus' : 'plus');
@@ -437,7 +389,6 @@ export function initApp() {
       };
       toast.timer = setTimeout(() => this._dismissToast(id), 10000);
       this.toasts.push(toast);
-      // Limita a 4 toasts
       while (this.toasts.length > 4) {
         const old = this.toasts.shift();
         if (old.timer) clearTimeout(old.timer);
@@ -460,11 +411,12 @@ export function initApp() {
     pickSearchResult(prod) {
       this.searchQuery = '';
       this.searchOpen = false;
+      this.view = 'products';
       this.activeCategory = prod.category;
       this.openQty(prod, 'out');
     },
 
-    // ====== Admin: PIN ======
+    // ====== PIN / admin ======
     openPinLogin() {
       this.pinDialog = { open: true, mode: 'login', step: 1, value: '', confirm: '', error: '' };
     },
@@ -514,6 +466,7 @@ export function initApp() {
         this._pushToast({ kind: 'info', qtyLabel: '✓', productName: 'PIN aggiornato' });
         return;
       }
+      // login
       const ok = await verifyPin(d.value);
       if (!ok) { d.error = 'PIN errato.'; d.value = ''; return; }
       this.pinDialog.open = false;
@@ -522,18 +475,16 @@ export function initApp() {
     pinCancel() { this.pinDialog.open = false; },
 
     enterAdmin() {
-      this.screen = 'admin';
-      this.adminTab = 'inventario';
+      this.adminUnlocked = true;
       this._startAdminTimer();
     },
 
     exitAdmin() {
-      this.screen = 'staff';
+      this.adminUnlocked = false;
+      if (this.view === 'impostazioni') this.view = 'products';
       stopInactivityTimer();
       if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
       this.adminRemainingSec = 0;
-      this.searchOpen = false;
-      this.searchQuery = '';
     },
 
     _startAdminTimer() {
@@ -541,7 +492,7 @@ export function initApp() {
       if (this._countdownTimer) clearInterval(this._countdownTimer);
       this._countdownTimer = setInterval(() => {
         this.adminRemainingSec = Math.ceil(remainingMs() / 1000);
-        if (this.screen !== 'admin') {
+        if (!this.adminUnlocked) {
           clearInterval(this._countdownTimer);
           this._countdownTimer = null;
         }
@@ -552,13 +503,14 @@ export function initApp() {
       this.pinDialog = { open: true, mode: 'change', step: 1, value: '', confirm: '', error: '' };
     },
 
-    // ====== Admin: prodotti ======
+    // ====== Prodotti ======
     openNewProduct() {
       this.productDialog = {
         open: true, isNew: true, original: null,
         form: {
           id: '', name: '', category: this.activeCategory || this.categories[0]?.id || '',
-          unit: 'bottiglia', currentStock: 0, minThreshold: 2, supplierId: '',
+          unit: 'bottiglia', currentStock: 0, minThreshold: 2,
+          costPrice: 0, salePrice: 0, supplierId: '',
         },
       };
     },
@@ -568,7 +520,10 @@ export function initApp() {
         form: {
           id: prod.id, name: prod.name, category: prod.category,
           unit: prod.unit, currentStock: prod.currentStock || 0,
-          minThreshold: prod.minThreshold || 0, supplierId: prod.supplierId || '',
+          minThreshold: prod.minThreshold || 0,
+          costPrice: prod.costPrice || 0,
+          salePrice: prod.salePrice || 0,
+          supplierId: prod.supplierId || '',
         },
       };
     },
@@ -580,6 +535,12 @@ export function initApp() {
       const id = this.productDialog.isNew ? slug(f.name) || newId() : f.id;
       const existing = this.productDialog.isNew ? await get('products', id) : null;
       const finalId = existing ? id + '-' + Date.now().toString(36) : id;
+      const orderForNew = (() => {
+        const same = this.products.filter((p) => p.category === f.category);
+        const max = same.reduce((m, p) => Math.max(m, p.order ?? 0), 0);
+        return max + 1;
+      })();
+      const orig = this.productDialog.original;
       const product = {
         id: finalId,
         name: f.name.trim(),
@@ -587,8 +548,14 @@ export function initApp() {
         unit: f.unit,
         currentStock: Number(f.currentStock) || 0,
         minThreshold: Number(f.minThreshold) || 0,
+        // Se l'utente non è admin, preserva i prezzi esistenti senza modificarli
+        costPrice: this.adminUnlocked ? (Number(f.costPrice) || 0) : (orig?.costPrice || 0),
+        salePrice: this.adminUnlocked ? (Number(f.salePrice) || 0) : (orig?.salePrice || 0),
         supplierId: f.supplierId || null,
         archived: false,
+        order: this.productDialog.isNew
+          ? orderForNew
+          : (orig?.order ?? orderForNew),
       };
       await put('products', product);
       this.productDialog.open = false;
@@ -602,31 +569,13 @@ export function initApp() {
         onConfirm: async () => {
           await put('products', { ...prod, archived: true });
           this.confirmDialog.open = false;
+          this.productDialog.open = false;
           await this.reloadAll();
         },
       };
     },
 
-    async updateStock(prod, value) {
-      const newStock = Number(value);
-      if (Number.isNaN(newStock)) return;
-      const delta = newStock - (prod.currentStock || 0);
-      if (delta === 0) return;
-      await recordMovement({
-        productId: prod.id, quantity: delta,
-        type: 'adjust', userMode: 'admin', note: 'Rettifica manuale',
-      });
-      await this.reloadAll();
-    },
-
-    async updateThreshold(prod, value) {
-      const n = Number(value);
-      if (Number.isNaN(n)) return;
-      await put('products', { ...prod, minThreshold: n });
-      await this.reloadAll();
-    },
-
-    // ====== Admin: movimenti ======
+    // ====== Movimenti ======
     get filteredMovements() {
       const { productId, days } = this.movementFilter;
       const cutoff = Date.now() - days * DAY_MS;
@@ -648,8 +597,11 @@ export function initApp() {
         },
       };
     },
+    exportMovementsCsv() {
+      exportMovementsCsv(this.filteredMovements);
+    },
 
-    // ====== Admin: fornitori ======
+    // ====== Fornitori ======
     openNewSupplier() {
       this.supplierDialog = { open: true, isNew: true, form: { id: '', name: '', phone: '', email: '', note: '' } };
     },
@@ -708,64 +660,6 @@ export function initApp() {
       exportShoppingListCsv(flat);
     },
 
-    // ====== Report ======
-    get reportData() {
-      const filtered = filterRange(this.movements, this.reportRange);
-      return {
-        daily: dailySeries(this.movements, this.reportRange),
-        top: topProducts(filtered, 10),
-        totals: totals(filtered),
-        weekly: compareWeekly(this.movements),
-      };
-    },
-    renderReportChart() {
-      this.$nextTick(() => {
-        const canvas = this.$refs.reportCanvas;
-        if (!canvas || !window.Chart) return;
-        const cs = getComputedStyle(document.documentElement);
-        const v = (k, fb) => (cs.getPropertyValue(k).trim() || fb);
-        const { daily } = this.reportData;
-        if (chartInstance) chartInstance.destroy();
-        chartInstance = new window.Chart(canvas, {
-          type: 'bar',
-          data: {
-            labels: daily.labels,
-            datasets: [{
-              label: 'Unità uscite',
-              data: daily.values,
-              backgroundColor: v('--chart-bar', 'rgba(255,138,76,0.85)'),
-              borderColor: v('--accent', '#ff8a4c'),
-              borderWidth: 0,
-              borderRadius: 6,
-              hoverBackgroundColor: v('--chart-bar-hover', '#ffa66e'),
-            }],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                backgroundColor: v('--chart-tooltip-bg', '#221b13'),
-                titleColor:     v('--chart-tooltip-fg', '#f5e9d3'),
-                bodyColor:      v('--chart-tooltip-sub', '#b0997d'),
-                borderColor:    v('--chart-tooltip-border', '#564530'),
-                borderWidth: 1,
-                padding: 10,
-              },
-            },
-            scales: {
-              x: { grid: { color: v('--chart-grid', '#322619') }, ticks: { color: v('--chart-tick', '#b0997d'), font: { family: 'JetBrains Mono' } } },
-              y: { grid: { color: v('--chart-grid', '#322619') }, ticks: { color: v('--chart-tick', '#b0997d'), font: { family: 'JetBrains Mono' } }, beginAtZero: true },
-            },
-          },
-        });
-      });
-    },
-    exportMovementsCsv() {
-      exportMovementsCsv(this.filteredMovements);
-    },
-
     // ====== Backup / Restore / Settings ======
     async doExportBackup() {
       await exportBackup();
@@ -795,19 +689,131 @@ export function initApp() {
         },
       };
     },
+    resetAllData() {
+      this.confirmDialog = {
+        open: true, danger: true,
+        title: 'Azzerare tutti i dati?',
+        message: 'Verranno cancellati prodotti, categorie, movimenti, fornitori e chiusure giornaliere. Il PIN admin e le impostazioni restano. L\'app verrà ripopolata con il catalogo iniziale.',
+        onConfirm: async () => {
+          try {
+            await clear('movements');
+            await clear('dailyCloses');
+            await clear('suppliers');
+            await clear('products');
+            await clear('categories');
+            await seedIfEmpty();
+            this.confirmDialog.open = false;
+            await this.reloadAll();
+            this._pushToast({ kind: 'info', qtyLabel: '✓', productName: 'Dati azzerati' });
+          } catch (err) {
+            this.confirmDialog.open = false;
+            alert('Errore: ' + err.message);
+          }
+        },
+      };
+    },
+
     async updateTimeout(seconds) {
       const ms = Math.max(30000, Math.min(600000, Number(seconds) * 1000));
       this.inactivityTimeoutMs = ms;
       await setSetting('inactivityTimeoutMs', ms);
-      if (this.screen === 'admin') this._startAdminTimer();
+      if (this.adminUnlocked) this._startAdminTimer();
     },
 
-    setAdminTab(tab) {
-      this.adminTab = tab;
-      if (tab === 'report') this.renderReportChart();
+    // ====== Categorie ======
+    openCategoryManager() {
+      this.categoryManager.open = true;
+      this.$nextTick(() => this._initCategoryManagerSortable());
+    },
+    closeCategoryManager() {
+      if (this._catSortable) { this._catSortable.destroy(); this._catSortable = null; }
+      this.categoryManager.open = false;
+    },
+    _initCategoryManagerSortable() {
+      const list = document.querySelector('.cat-manager-list');
+      if (!list || typeof Sortable === 'undefined') return;
+      if (this._catSortable) this._catSortable.destroy();
+      this._catSortable = Sortable.create(list, {
+        animation: 150,
+        delay: 200,
+        delayOnTouchOnly: true,
+        handle: '.drag-handle',
+        draggable: '.cat-manager-row',
+        onEnd: () => {
+          const ids = Array.from(list.querySelectorAll('.cat-manager-row[data-cat-id]'))
+            .map((n) => n.dataset.catId);
+          this._applyCategoryOrder(ids);
+        },
+      });
+    },
+    async _applyCategoryOrder(idsInOrder) {
+      const updates = [];
+      idsInOrder.forEach((id, i) => {
+        const c = this.categories.find((x) => x.id === id);
+        if (!c) return;
+        const newOrder = i + 1;
+        if (c.order !== newOrder) {
+          c.order = newOrder;
+          updates.push(c);
+        }
+      });
+      if (updates.length === 0) return;
+      await bulkPut('categories', updates);
+      this.categories = [...this.categories];
+    },
+    openNewCategory() {
+      this.categoryDialog = {
+        open: true, isNew: true, original: null,
+        form: { id: '', name: '', icon: '📦' },
+      };
+    },
+    openEditCategory(cat) {
+      this.categoryDialog = {
+        open: true, isNew: false, original: cat,
+        form: { id: cat.id, name: cat.name, icon: cat.icon || '' },
+      };
+    },
+    async saveCategory() {
+      const f = this.categoryDialog.form;
+      const name = (f.name || '').trim();
+      if (!name) return;
+      const slugify = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      if (this.categoryDialog.isNew) {
+        let id = slugify(name) || ('cat-' + Date.now().toString(36));
+        if (this.categories.some((c) => c.id === id)) id = id + '-' + Date.now().toString(36);
+        const maxOrder = this.categories.reduce((m, c) => Math.max(m, c.order || 0), 0);
+        await put('categories', {
+          id, name, icon: f.icon || '📦', order: maxOrder + 1,
+        });
+      } else {
+        const orig = this.categoryDialog.original;
+        await put('categories', { ...orig, name, icon: f.icon || orig.icon || '📦' });
+      }
+      this.categoryDialog.open = false;
+      await this.reloadAll();
+    },
+    deleteCategory(cat) {
+      const inCat = this.products.filter((p) => p.category === cat.id && !p.archived);
+      if (inCat.length > 0) {
+        alert(`Impossibile eliminare "${cat.name}": contiene ancora ${inCat.length} prodotti attivi. Archivia o sposta prima i prodotti.`);
+        return;
+      }
+      this.confirmDialog = {
+        open: true, danger: true,
+        title: `Eliminare la categoria "${cat.name}"?`,
+        message: 'L\'operazione non è reversibile (i prodotti archiviati in questa categoria diventano orfani).',
+        onConfirm: async () => {
+          await remove('categories', cat.id);
+          this.confirmDialog.open = false;
+          if (this.activeCategory === cat.id) {
+            this.activeCategory = this.categories.find((c) => c.id !== cat.id)?.id || '';
+          }
+          await this.reloadAll();
+        },
+      };
     },
 
-    // Forza aggiornamento app: pulisce cache service worker e ricarica.
     async forceUpdate() {
       try {
         if ('serviceWorker' in navigator) {
