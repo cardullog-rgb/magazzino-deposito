@@ -55,6 +55,7 @@ export function initApp() {
     // Vista corrente
     view: 'products', // 'products' | 'storico' | 'avvisi' | 'fornitori' | 'impostazioni'
     productView: 'cards', // 'cards' | 'list' (toggle dentro la vista Prodotti)
+    showArchived: false,
     activeCategory: 'acque',
 
     theme: 'dark',
@@ -669,6 +670,31 @@ export function initApp() {
     },
     exportMovementsCsv() {
       exportMovementsCsv(this.movements);
+    },
+
+    // ====== Archiviati ======
+    get archivedProducts() {
+      return this.products
+        .filter((p) => p.archived)
+        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
+    },
+    async restoreProduct(prod) {
+      await put('products', { ...prod, archived: false });
+      await this.reloadAll();
+      this._pushToast({ kind: 'in', qtyLabel: '✓', productName: `Ripristinato: ${prod.name}` });
+    },
+    permanentlyDeleteProduct(prod) {
+      this.confirmDialog = {
+        open: true, danger: true,
+        title: 'Eliminare definitivamente?',
+        message: `"${prod.name}" verrà cancellato dal catalogo. I movimenti registrati restano nello storico con il nome del prodotto.`,
+        onConfirm: async () => {
+          await remove('products', prod.id);
+          this.confirmDialog.open = false;
+          await this.reloadAll();
+          this._pushToast({ kind: 'out', qtyLabel: '✕', productName: `Eliminato: ${prod.name}` });
+        },
+      };
     },
 
     // ====== Lista totale inventario ======

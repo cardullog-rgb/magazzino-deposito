@@ -234,6 +234,15 @@
         <!-- === MODALITÀ LISTA TOTALE: tutti i prodotti raggruppati per categoria === -->
         <template x-if="productView === 'list'">
           <div style="padding: 6px 24px 100px;">
+            <div class="toolbar" style="margin-bottom:14px;">
+              <button class="cat-pill" :class="{ active: showArchived }" @click="showArchived = !showArchived">
+                <span x-text="showArchived ? '✓' : '○'"></span>
+                <span>Mostra archiviati</span>
+                <template x-if="archivedProducts.length > 0">
+                  <span class="badge" x-text="archivedProducts.length"></span>
+                </template>
+              </button>
+            </div>
             <template x-if="inventoryList.length === 0">
               <div class="empty">Nessun prodotto in inventario.</div>
             </template>
@@ -274,6 +283,44 @@
                   </template>
                 </div>
               </div>
+            </template>
+
+            <!-- Sezione Archiviati (solo se toggle attivo) -->
+            <template x-if="showArchived && archivedProducts.length > 0">
+              <div class="section archived-section">
+                <h2 style="margin: 26px 0 10px; display:flex; align-items:baseline; gap:10px;">
+                  <span>📁</span>
+                  <em>Archiviati</em>
+                  <span class="muted" style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.5px;">
+                    <span x-text="archivedProducts.length"></span> prodotti
+                  </span>
+                </h2>
+                <p class="muted" style="margin: 0 0 10px; font-size:12.5px;">I prodotti archiviati non appaiono nelle viste normali. Puoi ripristinarli o eliminarli definitivamente. I movimenti storici restano in ogni caso.</p>
+                <div class="row-list">
+                  <div class="row head" style="grid-template-columns: 2.5fr 1fr 1fr auto;">
+                    <div>Prodotto</div>
+                    <div>Categoria</div>
+                    <div class="col-hide-sm">Scorta</div>
+                    <div></div>
+                  </div>
+                  <template x-for="prod in archivedProducts" :key="prod.id">
+                    <div class="row archived-row" style="grid-template-columns: 2.5fr 1fr 1fr auto;">
+                      <div class="name" x-text="prod.name"></div>
+                      <div class="muted" x-text="categoryById(prod.category)?.name || '— senza categoria —'"></div>
+                      <div class="muted col-hide-sm" x-text="(prod.currentStock || 0) + ' ' + prod.unit"></div>
+                      <div>
+                        <button class="btn small ok" @click="restoreProduct(prod)" title="Ripristina">↺ Ripristina</button>
+                        <button class="btn small danger" @click="permanentlyDeleteProduct(prod)" title="Elimina definitivamente">✕ Elimina</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Stato vuoto quando il toggle è attivo ma nessun archiviato -->
+            <template x-if="showArchived && archivedProducts.length === 0">
+              <div class="empty" style="margin-top: 18px;">Nessun prodotto archiviato.</div>
             </template>
           </div>
         </template>
