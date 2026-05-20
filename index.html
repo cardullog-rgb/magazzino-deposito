@@ -377,6 +377,10 @@
 
             <template x-if="expandedSessions[s.id]">
               <div class="session-body">
+                <div class="toolbar" style="margin: 14px 0 6px;">
+                  <button class="btn primary" @click="printSessionSheet(s)">🖨 Stampa foglio chiusura</button>
+                  <span class="muted" style="font-size:12px;">PDF con TUTTI i prodotti, ✓ sulle voci con movimenti.</span>
+                </div>
                 <template x-if="s.movements.length === 0">
                   <div class="empty" style="padding:24px">Nessun movimento in questa sessione.</div>
                 </template>
@@ -893,6 +897,7 @@
         </div>
 
         <div class="splash-actions">
+          <button class="btn" @click="printLastCloseSheet()">🖨 Stampa foglio chiusura</button>
           <button class="btn primary" @click="startNewDay()">Apri nuova giornata</button>
         </div>
         <div style="margin-top: 14px; text-align: center;">

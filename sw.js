@@ -1,6 +1,6 @@
 // Strategia "network-first" — sempre tenta la rete, cache come fallback offline.
 // Adatto durante lo sviluppo dell'app: ogni modifica arriva al prossimo reload.
-const CACHE = 'magazzino-v22';
+const CACHE = 'magazzino-v23';
 const ASSETS = [
   './',
   './index.html',

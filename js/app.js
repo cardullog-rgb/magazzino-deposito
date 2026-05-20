@@ -672,6 +672,150 @@ export function initApp() {
       exportMovementsCsv(this.movements);
     },
 
+    // ====== Stampa foglio chiusura ======
+    // Per ogni prodotto attivo calcola: stock iniziale, entrate, uscite,
+    // stock finale nella sessione. Anche i prodotti senza movimenti compaiono.
+    _computeSessionRows(session) {
+      const deltaByProd = {}, inByProd = {}, outByProd = {};
+      for (const m of session.movements || []) {
+        deltaByProd[m.productId] = (deltaByProd[m.productId] || 0) + m.delta;
+        if (m.type === 'in') inByProd[m.productId] = (inByProd[m.productId] || 0) + m.quantity;
+        else if (m.type === 'out') outByProd[m.productId] = (outByProd[m.productId] || 0) + m.quantity;
+      }
+      const stockEnd = {};
+      if (session.isCurrent) {
+        for (const p of this.products) if (!p.archived) stockEnd[p.id] = p.currentStock || 0;
+      } else {
+        const close = this.dailyCloses.find((c) => c.date === session.id);
+        if (close?.stockSnapshot) for (const s of close.stockSnapshot) stockEnd[s.id] = s.stock || 0;
+      }
+      const byCat = {};
+      for (const p of this.products) {
+        if (p.archived) continue;
+        const end = stockEnd[p.id] ?? (p.currentStock || 0);
+        const start = end - (deltaByProd[p.id] || 0);
+        const row = {
+          id: p.id, name: p.name, unit: p.unit,
+          stockStart: start,
+          in: inByProd[p.id] || 0,
+          out: outByProd[p.id] || 0,
+          stockEnd: end,
+          modified: (inByProd[p.id] || 0) > 0 || (outByProd[p.id] || 0) > 0,
+        };
+        if (!byCat[p.category]) byCat[p.category] = [];
+        byCat[p.category].push(row);
+      }
+      return this.categories
+        .map((cat) => ({
+          category: cat,
+          rows: (byCat[cat.id] || []).sort((a, b) => {
+            const pa = this.products.find((p) => p.id === a.id);
+            const pb = this.products.find((p) => p.id === b.id);
+            return (pa?.order ?? 9999) - (pb?.order ?? 9999) || a.name.localeCompare(b.name, 'it');
+          }),
+        }))
+        .filter((g) => g.rows.length > 0);
+    },
+
+    printSessionSheet(session) {
+      const groups = this._computeSessionRows(session);
+      const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const fmt = (n) => {
+        const v = Number(n) || 0;
+        return v % 1 === 0 ? String(v) : v.toFixed(1).replace('.', ',');
+      };
+      const totalMov = session.movementCount || 0;
+      const totalIn = session.in || 0;
+      const totalOut = session.out || 0;
+      const modCount = groups.reduce((s, g) => s + g.rows.filter((r) => r.modified).length, 0);
+      const totalCount = groups.reduce((s, g) => s + g.rows.length, 0);
+
+      const tablesHtml = groups.map((g) => `
+        <h2>${esc(g.category.icon || '')} ${esc(g.category.name)}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th class="check"></th>
+              <th class="name">Prodotto</th>
+              <th class="num">Iniziale</th>
+              <th class="num">Entrate</th>
+              <th class="num">Uscite</th>
+              <th class="num">Finale</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${g.rows.map((r) => `
+              <tr class="${r.modified ? 'modified' : ''}">
+                <td class="check">${r.modified ? '✓' : ''}</td>
+                <td class="name">${esc(r.name)} <span class="unit">(${esc(r.unit)})</span></td>
+                <td class="num">${fmt(r.stockStart)}</td>
+                <td class="num in">${r.in > 0 ? '+' + fmt(r.in) : '—'}</td>
+                <td class="num out">${r.out > 0 ? '−' + fmt(r.out) : '—'}</td>
+                <td class="num final">${fmt(r.stockEnd)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`).join('');
+
+      const html = `<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8"><title>Foglio chiusura · ${esc(session.label)}</title>
+<style>
+  @page { margin: 14mm; size: A4; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1c1610; margin: 0; padding: 22px; font-size: 12px; background: #fff; }
+  h1 { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 500; font-size: 26px; margin: 0 0 4px; letter-spacing: -0.5px; }
+  .sub { color: #6b5a40; font-size: 11.5px; margin-bottom: 14px; font-style: italic; }
+  .totals { display: flex; gap: 22px; margin: 12px 0 22px; padding: 12px 16px; background: #fdf6e4; border: 1px solid #d9c79f; border-radius: 6px; }
+  .totals .b { font-family: 'Courier New', monospace; font-weight: 700; font-size: 14px; }
+  .totals .b em { font-style: italic; color: #6b5a40; font-family: Georgia, serif; font-size: 10.5px; font-weight: 400; text-transform: uppercase; letter-spacing: 1px; margin-right: 6px; }
+  .totals .out { color: #b34431; }
+  .totals .in { color: #45855f; }
+  h2 { font-family: Georgia, serif; font-style: italic; font-weight: 500; font-size: 15px; margin: 18px 0 6px; border-bottom: 1px solid #c0a566; padding-bottom: 4px; color: #1c1610; page-break-after: avoid; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; page-break-inside: avoid; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid #ece4cf; text-align: left; }
+  th { font-family: Georgia, serif; font-style: italic; font-weight: 400; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: #6b5a40; background: #f7efd6; }
+  td.num, th.num { text-align: right; font-family: 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+  td.check, th.check { width: 18px; text-align: center; color: #b34431; font-weight: 700; }
+  td.name { font-weight: 400; }
+  td.unit { color: #8a7a5a; font-style: italic; font-size: 11px; }
+  tr.modified td.name { font-weight: 700; }
+  tr.modified { background: #fffaea; }
+  td.in { color: #45855f; font-weight: 700; }
+  td.out { color: #b34431; font-weight: 700; }
+  td.final { font-weight: 700; }
+  .footer { margin-top: 20px; font-size: 9.5px; color: #888; text-align: center; font-style: italic; border-top: 1px dashed #ccc; padding-top: 10px; }
+  @media print { body { padding: 0; } .no-print { display: none !important; } }
+  .no-print { padding: 12px; background: #f7efd6; border-bottom: 1px solid #d9c79f; text-align: center; margin: -22px -22px 18px; }
+  .no-print button { background: #b34431; border: none; color: #fff; padding: 10px 22px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 6px; margin: 0 4px; }
+  .no-print button.ghost { background: transparent; color: #6b5a40; border: 1px solid #c0a566; }
+</style></head><body>
+  <div class="no-print">
+    <button onclick="window.print()">🖨 Stampa / Salva come PDF</button>
+    <button class="ghost" onclick="window.close()">Chiudi</button>
+  </div>
+  <h1>Foglio chiusura · ${esc(session.label)}</h1>
+  <div class="sub">Pizzeria Deposito Bagagli — Magazzino · ${esc(session.sublabel || '')} · esportato ${esc(new Date().toLocaleString('it-IT'))}</div>
+  <div class="totals">
+    <span class="b"><em>movimenti</em>${totalMov}</span>
+    <span class="b in"><em>entrate tot.</em>${fmt(totalIn)}</span>
+    <span class="b out"><em>uscite tot.</em>${fmt(totalOut)}</span>
+    <span class="b"><em>modificati</em>${modCount} / ${totalCount}</span>
+  </div>
+  ${tablesHtml}
+  <div class="footer">Magazzino Pizzeria Deposito Bagagli</div>
+</body></html>`;
+
+      const w = window.open('', '_blank');
+      if (!w) { alert('Il browser ha bloccato il pop-up. Abilitalo per stampare il foglio.'); return; }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    },
+
+    printLastCloseSheet() {
+      if (!this.lastCloseSummary) return;
+      const sess = this.historySessions.find((s) => s.id === this.lastCloseSummary.date);
+      if (sess) this.printSessionSheet(sess);
+    },
+
     // ====== Archiviati ======
     get archivedProducts() {
       return this.products
